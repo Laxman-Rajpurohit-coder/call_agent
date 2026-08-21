@@ -1,0 +1,47 @@
+id: genuine_interrupt_after_opener_001
+suite: smoke
+language: en
+category: genuine_barge_in
+transport: direct_audiosocket
+caller_goal: genuine_caller_interruption_over_opener
+description: "Verify genuine caller interruption ('Actually, tell me the address.') interrupts agent playback and triggers new answer"
+
+turns:
+  - audio_file: "evaluation/audio/synthetic/caller_no_001.wav"
+
+barge_in:
+  interrupt_audio: "evaluation/audio/synthetic/caller_actually_address_001.wav"
+  interrupt_after_playback_ms: 600
+
+input:
+  trigger: caller_says_no
+  caller_interruption: "Actually, tell me the address."
+  interrupt_after_ms: 600
+
+expected:
+  false_barge_in: false
+  true_barge_in: true
+  playback_stopped: true
+  interruption_text_complete: true
+
+required_facts:
+  - "Gandhi Pura"
+  - "Balotra"
+
+forbidden_facts: []
+
+audio_gates:
+  max_unexpected_gap_ms: 250
+  max_queue_underflow_count: 0
+  max_duplicate_chunk_count: 0
+
+prosody_gates:
+  max_pitch_reset_at_boundary: 0
+  max_internal_gap_ms: 250
+
+expected_tools: []
+
+success_conditions:
+  - stt_not_empty
+  - required_facts_present
+  - zero_playback_underruns

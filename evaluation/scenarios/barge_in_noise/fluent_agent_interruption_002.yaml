@@ -1,0 +1,17 @@
+id: fluent_agent_interruption_002
+suite: barge_in_noise
+category: genuine_barge_in
+language: en
+transport: direct_audiosocket
+description: Caller interrupts during fluent conversational response
+turns:
+- audio_file: evaluation/audio/synthetic/caller_no_001.wav
+barge_in:
+  interrupt_audio: evaluation/audio/synthetic/caller_wait_stop_001.wav
+  interrupt_after_playback_ms: 600
+required_facts: []
+expected:
+  barge_in_detected: true
+  playback_stopped: true
+success_conditions:
+- stt_not_empty

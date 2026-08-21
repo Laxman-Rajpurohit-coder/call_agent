@@ -27,10 +27,10 @@ class DeterministicEvaluator:
         checks = {}
         failure_reasons = []
 
-        if category == "noise_rejection":
-            # For noise and non-speech, success means:
+        if category in ("noise_rejection", "agent_echo", "noise_only", "breath_cough"):
+            # For noise, echo, and breath non-speech, success means:
             # 1. No phantom transcript / hallucination
-            # 2. No agent speech generated (zero unwanted output)
+            # 2. No agent speech generated (zero unwanted output / zero false barge-in)
             no_phantom_passed = len(caller_text) == 0 or caller_text.lower() not in [
                 "i don't", "i know", "i love", "thank you", "hello", "yes", "no"
             ]
@@ -40,11 +40,12 @@ class DeterministicEvaluator:
 
             silent_rejection_passed = (agent_audio_bytes == 0) or (len(agent_text) == 0)
             checks["silent_rejection"] = silent_rejection_passed
+            checks["no_false_barge_in"] = silent_rejection_passed
             if not silent_rejection_passed:
                 failure_reasons.append(f"unwanted_agent_response: '{agent_text}'")
 
             passed = no_phantom_passed and silent_rejection_passed
-        elif category in ("tts_continuity", "playback_continuity"):
+        elif category in ("tts_continuity", "playback_continuity", "quiet_speech_under_noise", "genuine_barge_in"):
             # 1. STT non-empty check
             stt_passed = len(caller_text) > 0
             checks["stt_not_empty"] = stt_passed

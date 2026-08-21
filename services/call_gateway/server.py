@@ -7,7 +7,7 @@ import os
 import time
 import httpx
 import numpy as np
-from typing import Optional, Dict, Set
+from typing import Optional, Dict, Set, Any
 from datetime import datetime, timezone
 from shared.protocol import CallSession, CallState, STTResult, LLMResult, TTSResult
 from shared.queue.local_queue import LocalAsyncQueue
@@ -302,12 +302,14 @@ async def stream_audio_queue_to_asterisk(
     writer,
     audio_queue: asyncio.Queue,
     cancel_event: Optional[asyncio.Event] = None,
-    call_id: str = "unknown"
+    call_id: str = "unknown",
+    vad_engine: Optional[Any] = None,
 ):
     """
     High-precision monotonic pacer for AudioSocket streaming to Asterisk.
     Drains 320-byte (20ms) frames from audio_queue and paces them with
     clock drift compensation against time.monotonic().
+    Feeds reference frames to vad_engine for echo cross-correlation rejection.
     """
     prebuffer = []
     while len(prebuffer) < PREBUFFER_FRAMES:
@@ -349,6 +351,8 @@ async def stream_audio_queue_to_asterisk(
         try:
             writer.write(header + f_bytes)
             await writer.drain()
+            if vad_engine:
+                vad_engine.feed_agent_playback(f_bytes)
         except Exception:
             return False
 
@@ -488,6 +492,21 @@ async def handle_audiosocket_connection(reader, writer):
                 # Start immediately in LISTENING state so microphone is active from frame 1
                 session.state = CallState.LISTENING
                 logger.info("CALL_CONNECTED call_id=%s state=CallState.LISTENING (Mic actively listening)", call_id)
+                # Neural VAD & Endpointing Engine (Echo-Aware Gating & Noise Floor Tracking)
+                vad_engine = SileroEndpointingEngine(
+                    speech_threshold=0.45,
+                    barge_in_threshold=0.55,
+                    pre_roll_frames=25,          # 500ms continuous ring buffer
+                    confirm_frames_needed=3,     # 60ms fast speech confirmation
+                    hangover_frames_needed=20,   # 400ms natural conversational clause endpointing
+                    barge_in_frames_needed=5,    # 100ms robust barge-in confirmation
+                    min_utterance_frames=10,     # 200ms min utterance
+                    max_utterance_frames=750,    # 15.0s max
+                    echo_correlation_threshold=0.58,
+                )
+
+                total_rx_bytes = 0
+                first_rx_frame = True
 
                 # Set SUPERFONE_STATUS=SUCCESS via AMI if on an Asterisk channel
                 if not channel_name.startswith("DIRECT/"):
@@ -503,21 +522,6 @@ async def handle_audiosocket_connection(reader, writer):
                             logger.error("Failed to set SUPERFONE_STATUS=SUCCESS via AMI: %s", res.get("Message"))
                     except Exception as ex:
                         logger.error("Error setting SUPERFONE_STATUS=SUCCESS: %s", ex)
-
-                # Neural VAD & Endpointing Engine (500ms pre-roll + 240ms ultra-snappy hangover)
-                vad_engine = SileroEndpointingEngine(
-                    speech_threshold=0.45,
-                    barge_in_threshold=0.52,
-                    pre_roll_frames=25,          # 500ms continuous ring buffer
-                    confirm_frames_needed=3,     # 60ms fast speech confirmation
-                    hangover_frames_needed=12,   # 240ms ultra-snappy trailing silence
-                    barge_in_frames_needed=4,    # 80ms fast & reliable barge-in confirmation
-                    min_utterance_frames=10,     # 200ms min utterance
-                    max_utterance_frames=750,    # 15.0s max
-                )
-
-                total_rx_bytes = 0
-                first_rx_frame = True
 
                 while True:
                     hdr = await reader.readexactly(3)
@@ -562,10 +566,15 @@ async def handle_audiosocket_connection(reader, writer):
                         if event == "BARGE_IN":
                             preroll_bytes = len(vad_engine.utterance_chunks) * 320
                             logger.info(
-                                "BARGE_IN_TRIGGERED call_id=%s prob=%.2f preroll_bytes=%d audio_offset_ms=500.0",
-                                call_id, prob, preroll_bytes
+                                "BARGE_IN_TRIGGERED call_id=%s prob=%.2f preroll_bytes=%d telemetry=%s",
+                                call_id, prob, preroll_bytes, vad_engine.last_telemetry
                             )
                             cancel_current_turn(reason="sustained caller speech during AI playback")
+                        elif event == "BARGE_IN_CANDIDATE":
+                            logger.debug(
+                                "BARGE_IN_CANDIDATE call_id=%s prob=%.2f telemetry=%s",
+                                call_id, prob, vad_engine.last_telemetry
+                            )
                         elif event == "SPEECH_START":
                             logger.info("VAD_SPEECH_START call_id=%s prob=%.2f", call_id, prob)
                         elif event == "SPEECH_END" and full_utterance:
@@ -586,13 +595,13 @@ async def handle_audiosocket_connection(reader, writer):
                                 max_frame_rms = max(frame_rmses) if frame_rmses else 0.0
 
                             logger.info(
-                                "VAD_SPEECH_END call_id=%s audio_duration_ms=%.1f audio_bytes=%d trailing_silence_ms=240.0 peak_level=%d max_frame_rms=%.1f avg_rms=%.1f prob=%.2f",
+                                "VAD_SPEECH_END call_id=%s audio_duration_ms=%.1f audio_bytes=%d trailing_silence_ms=400.0 peak_level=%d max_frame_rms=%.1f avg_rms=%.1f prob=%.2f",
                                 call_id, duration_ms, len(full_utterance), peak_level, max_frame_rms, rms_level, prob
                             )
-                            # Reject only true line hiss/ambient noise, never quiet spoken words
-                            if peak_level < 400 and max_frame_rms < 50.0:
+                            # Reject noise frames / microphone clicks below energy thresholds
+                            if peak_level < 2000 or (rms_level < 250.0 and max_frame_rms < 900.0):
                                 logger.info(
-                                    "STT_REJECTED call_id=%s reason=low_energy peak=%d max_frame_rms=%.1f avg_rms=%.1f",
+                                    "call_id=%s Discarding quiet non-speech frame (peak=%d, max_frame_rms=%.1f, avg_rms=%.1f)",
                                     call_id, peak_level, max_frame_rms, rms_level
                                 )
                                 continue
@@ -607,7 +616,7 @@ async def handle_audiosocket_connection(reader, writer):
                                     logger.info("AUDIO_DISPATCH_START call_id=%s bytes=%d", call_id, len(audio_data))
                                     await handler.handle_utterance_stream(
                                         audio_data,
-                                        lambda item: stream_audio_queue_to_asterisk(writer, item, cancel_ev, call_id) if isinstance(item, asyncio.Queue) else stream_audio_to_asterisk(writer, item, cancel_ev, call_id),
+                                        lambda item: stream_audio_queue_to_asterisk(writer, item, cancel_ev, call_id, vad_engine=vad_engine) if isinstance(item, asyncio.Queue) else stream_audio_to_asterisk(writer, item, cancel_ev, call_id),
                                         http_client,
                                         cancel_ev,
                                     )

@@ -29,14 +29,16 @@ async def run_evaluation(
     print(f"========================================================\n")
 
     # Discover scenarios
-    scenarios_dir = Path("evaluation/scenarios") / suite
+    scenarios_root = Path("evaluation/scenarios")
     if scenario_id:
-        scenario_files = [scenarios_dir / f"{scenario_id}.yaml"]
+        matches = list(scenarios_root.glob(f"**/{scenario_id}.yaml"))
+        scenario_files = matches if matches else [scenarios_root / suite / f"{scenario_id}.yaml"]
     else:
+        scenarios_dir = scenarios_root / suite
         scenario_files = list(scenarios_dir.glob("*.yaml"))
 
     if not scenario_files or not scenario_files[0].exists():
-        print(f"[ERROR] No scenario files found in {scenarios_dir} matching query.")
+        print(f"[ERROR] No scenario files found in {scenarios_root} matching query.")
         sys.exit(1)
 
     runner = AudioSocketRunner()

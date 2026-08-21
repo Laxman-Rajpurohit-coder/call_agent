@@ -1,9 +1,11 @@
 import collections
 import enum
 import time
+from typing import Optional, Tuple, Dict, Any
 import numpy as np
 from scipy.signal import resample_poly
 import faster_whisper.vad as fv
+
 
 class VADState(enum.Enum):
     LISTENING = "LISTENING"
@@ -11,28 +13,37 @@ class VADState(enum.Enum):
     IN_SPEECH = "IN_SPEECH"
     POSSIBLE_END = "POSSIBLE_END"
 
+
+class BargeInState(enum.Enum):
+    NORMAL_PLAYBACK = "NORMAL_PLAYBACK"
+    BARGE_IN_CANDIDATE = "BARGE_IN_CANDIDATE"
+    CONFIRMED_BARGE_IN = "CONFIRMED_BARGE_IN"
+
+
 class SileroEndpointingEngine:
     """
-    Real-Time Stateful Neural VAD & Endpointing Engine.
+    Real-Time Stateful Neural VAD, Echo-Aware Gating & Noise-Tracked Endpointing Engine.
     
     Combines:
       - Silero VAD (ONNX) neural voice probability
-      - 300ms pre-roll ring buffer (15 frames x 20ms)
-      - 120ms speech-start confirmation (6 consecutive speech frames)
+      - Agent Playback Reference Ring Buffer & Cross-Correlation Echo Rejection
+      - Adaptive Noise Floor Tracker (ambient RMS tracking)
+      - 500ms pre-roll ring buffer (25 frames x 20ms)
+      - 60ms speech-start confirmation (3 consecutive speech frames)
       - 400ms hangover trailing silence (20 consecutive non-speech frames)
-      - Separate 200ms sustained barge-in threshold for AI_SPEAKING state
-      - Min utterance threshold (400ms) to discard brief clicks/breaths
+      - Multi-frame Barge-In Candidate/Confirmed State Machine (5 frames = 100ms non-echo confirmation)
     """
     def __init__(
         self,
         speech_threshold: float = 0.45,
-        barge_in_threshold: float = 0.52,
+        barge_in_threshold: float = 0.55,
         pre_roll_frames: int = 25,        # 500ms @ 20ms/frame ring buffer
         confirm_frames_needed: int = 3,   # 60ms fast speech confirmation
         hangover_frames_needed: int = 20, # 400ms natural conversational clause endpointing
-        barge_in_frames_needed: int = 4,  # 80ms fast & reliable barge-in confirmation
+        barge_in_frames_needed: int = 5,  # 100ms robust barge-in confirmation
         min_utterance_frames: int = 10,   # 200ms min utterance
         max_utterance_frames: int = 750,  # 15.0s max
+        echo_correlation_threshold: float = 0.58,
     ):
         self.vad_model = fv.get_vad_model()
         self.speech_threshold = speech_threshold
@@ -43,19 +54,35 @@ class SileroEndpointingEngine:
         self.barge_in_frames_needed = barge_in_frames_needed
         self.min_utterance_frames = min_utterance_frames
         self.max_utterance_frames = max_utterance_frames
+        self.echo_correlation_threshold = echo_correlation_threshold
 
         self.state = VADState.LISTENING
+        self.barge_in_state = BargeInState.NORMAL_PLAYBACK
         self.pre_roll_buffer = collections.deque(maxlen=pre_roll_frames)
         self.utterance_chunks = []
         self.audio_16k_buffer = np.array([], dtype=np.float32)
+
+        # Agent playback reference buffer (stores recent 1000ms = 50 frames of playback audio)
+        self.agent_playback_buffer = collections.deque(maxlen=50)
+
+        # Adaptive ambient noise floor tracker
+        self.noise_floor_rms = 150.0
+        self.noise_floor_initialized = False
 
         self.confirm_count = 0
         self.hangover_count = 0
         self.barge_in_count = 0
         self.current_prob = 0.0
+        self.last_telemetry: Dict[str, Any] = {}
+
+    def feed_agent_playback(self, frame_pcm16_8k: bytes):
+        """Feed agent playback reference frames for echo cross-correlation."""
+        if frame_pcm16_8k:
+            self.agent_playback_buffer.append(frame_pcm16_8k)
 
     def reset(self):
         self.state = VADState.LISTENING
+        self.barge_in_state = BargeInState.NORMAL_PLAYBACK
         self.pre_roll_buffer.clear()
         self.utterance_chunks.clear()
         self.audio_16k_buffer = np.array([], dtype=np.float32)
@@ -63,13 +90,48 @@ class SileroEndpointingEngine:
         self.hangover_count = 0
         self.barge_in_count = 0
         self.current_prob = 0.0
+        self.last_telemetry.clear()
 
-    def process_frame(self, frame_pcm16_8k: bytes, is_ai_speaking: bool = False):
+    def _compute_echo_correlation(self, input_samples: np.ndarray) -> float:
         """
-        Process a single 320-byte (20ms) PCM16 8kHz audio frame.
+        Computes maximum normalized cross-correlation between input frame
+        and recent agent playback reference frames.
+        """
+        if not self.agent_playback_buffer or len(input_samples) == 0:
+            return 0.0
+
+        inp_std = np.std(input_samples)
+        if inp_std < 1e-4:
+            return 0.0
+        inp_norm = (input_samples - np.mean(input_samples)) / inp_std
+
+        max_corr = 0.0
+        # Check against last 10 playback frames (200ms window)
+        recent_playback = list(self.agent_playback_buffer)[-10:]
+        for pb_bytes in recent_playback:
+            pb_samples = np.frombuffer(pb_bytes, dtype=np.int16).astype(np.float32)
+            if len(pb_samples) != len(input_samples):
+                continue
+            pb_std = np.std(pb_samples)
+            if pb_std < 1e-4:
+                continue
+            pb_norm = (pb_samples - np.mean(pb_samples)) / pb_std
+            corr = float(np.mean(inp_norm * pb_norm))
+            if corr > max_corr:
+                max_corr = corr
+
+        return max(0.0, min(1.0, max_corr))
+
+    def process_frame(
+        self,
+        frame_pcm16_8k: bytes,
+        is_ai_speaking: bool = False
+    ) -> Tuple[Optional[str], Optional[bytes], float]:
+        """
+        Process a single 320-byte (20ms) PCM16 8kHz audio frame with echo-aware gating.
         
         Returns: (event, audio_bytes, prob)
-          event: None | "SPEECH_START" | "SPEECH_END" | "BARGE_IN"
+          event: None | "SPEECH_START" | "SPEECH_END" | "BARGE_IN" | "BARGE_IN_CANDIDATE"
           audio_bytes: complete PCM16 8k bytes on SPEECH_END, else None
           prob: Silero speech probability float [0.0 - 1.0]
         """
@@ -79,9 +141,13 @@ class SileroEndpointingEngine:
         # Always feed continuous pre-roll ring buffer (500ms history)
         self.pre_roll_buffer.append(frame_pcm16_8k)
 
-        # Convert to float32 and upsample 8kHz -> 16kHz
-        samples_8k = np.frombuffer(frame_pcm16_8k, dtype=np.int16).astype(np.float32) / 32768.0
-        samples_16k = resample_poly(samples_8k, 2, 1) # 160 samples -> 320 samples @ 16kHz
+        # Convert to float32 and compute frame RMS energy
+        samples_8k = np.frombuffer(frame_pcm16_8k, dtype=np.int16).astype(np.float32)
+        frame_rms = float(np.sqrt(np.mean(samples_8k**2)))
+        samples_norm = samples_8k / 32768.0
+
+        # Upsample 8kHz -> 16kHz for Silero VAD
+        samples_16k = resample_poly(samples_norm, 2, 1) # 160 samples -> 320 samples @ 16kHz
         self.audio_16k_buffer = np.append(self.audio_16k_buffer, samples_16k)
 
         # Run Silero VAD when we have at least 512 samples @ 16kHz
@@ -93,22 +159,65 @@ class SileroEndpointingEngine:
             prob = float(np.squeeze(out))
             self.current_prob = prob
 
-        # ── Case A: AI is currently speaking (Barge-In Policy) ───────────────
+        # Adaptive Noise Floor Tracking (smooth EMA during non-speech)
+        if not is_ai_speaking and prob < 0.30:
+            if not self.noise_floor_initialized:
+                self.noise_floor_rms = frame_rms
+                self.noise_floor_initialized = True
+            else:
+                self.noise_floor_rms = 0.96 * self.noise_floor_rms + 0.04 * frame_rms
+
+        # ── Case A: AI is currently speaking (Echo-Aware Barge-In Policy) ────
         if is_ai_speaking:
-            if prob >= self.barge_in_threshold:
+            echo_corr = self._compute_echo_correlation(samples_8k)
+            is_echo = (echo_corr >= self.echo_correlation_threshold)
+
+            # Energy gate: require frame energy to exceed ambient noise floor margin
+            min_energy_threshold = max(160.0, self.noise_floor_rms * 1.6)
+            is_energy_valid = (frame_rms >= min_energy_threshold)
+
+            is_positive_candidate = (
+                prob >= self.barge_in_threshold and
+                not is_echo and
+                is_energy_valid
+            )
+
+            # Structured Telemetry
+            self.last_telemetry = {
+                "event": "barge_in_evaluation",
+                "timestamp_ms": int(time.time() * 1000),
+                "speech_probability": round(prob, 3),
+                "input_rms": round(frame_rms, 1),
+                "noise_floor_rms": round(self.noise_floor_rms, 1),
+                "echo_correlation": round(echo_corr, 3),
+                "is_echo": is_echo,
+                "is_energy_valid": is_energy_valid,
+                "consecutive_positive_frames": self.barge_in_count,
+            }
+
+            if is_positive_candidate:
                 self.barge_in_count += 1
                 if self.barge_in_count >= self.barge_in_frames_needed:
+                    # Confirmed genuine caller speech over agent playback
                     self.barge_in_count = 0
+                    self.barge_in_state = BargeInState.CONFIRMED_BARGE_IN
                     self.state = VADState.IN_SPEECH
-                    # Seed utterance buffer with the full 500ms pre-roll history before barge-in
+                    # Seed utterance buffer with full 500ms pre-roll history before interruption
                     self.utterance_chunks = list(self.pre_roll_buffer)
+                    self.last_telemetry["decision"] = "confirm_barge_in"
                     return "BARGE_IN", None, prob
+                else:
+                    self.barge_in_state = BargeInState.BARGE_IN_CANDIDATE
+                    self.last_telemetry["decision"] = "candidate_accumulating"
+                    return "BARGE_IN_CANDIDATE", None, prob
             else:
                 self.barge_in_count = 0
-            return None, None, prob
+                self.barge_in_state = BargeInState.NORMAL_PLAYBACK
+                self.last_telemetry["decision"] = "reject_echo" if is_echo else "reject_noise"
+                return None, None, prob
 
         # ── Case B: Caller is in normal LISTENING / IN_SPEECH state ───────────
-        is_speech = prob >= self.speech_threshold
+        is_speech = (prob >= self.speech_threshold) and (frame_rms >= max(80.0, self.noise_floor_rms * 1.2))
 
         if self.state == VADState.LISTENING:
             if is_speech:
@@ -153,7 +262,7 @@ class SileroEndpointingEngine:
                     if frames_count >= self.min_utterance_frames:
                         return "SPEECH_END", full_audio, prob
                     else:
-                        # Too short (<400ms) -> discard without triggering STT
+                        # Too short (<200ms) -> discard noise click
                         return None, None, prob
 
         return None, None, prob
