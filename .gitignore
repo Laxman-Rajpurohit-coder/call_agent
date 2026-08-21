@@ -1,0 +1,15 @@
+venv/
+__pycache__/
+*.pyc
+*.log
+*.pcap
+*.mp4
+*.wav
+*.mp3
+*.gguf
+*.onnx
+call_gateway.log
+MicroSIP-3.22.12/
+piper/
+storage/*.db
+evaluation/artifacts/

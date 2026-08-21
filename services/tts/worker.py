@@ -1,0 +1,427 @@
+"""
+services/tts/worker.py — Phase 2: persistent warm Piper subprocess pool.
+Phase 3 additions: queue_wait_ms + inference_ms telemetry per request.
+
+Timing boundaries:
+  queue_wait_ms  — wall-clock time from HTTP handler enqueue to worker task start.
+                   Uses time.time() for cross-process consistency.
+  inference_ms   — PersistentPiper.synthesize() + resample_poly only.
+                   Does not include HTTP overhead or queue_wait.
+  latency_ms     — total HTTP handler time (queue_wait + inference + HTTP overhead).
+                   queue_wait + inference < latency_ms; remainder is expected overhead.
+
+LLM serialization constraint (on record since M1 review):
+  One Llama instance → one inference at a time system-wide.
+  This is the hard throughput ceiling until multiple model instances or a
+  batching server is introduced.
+"""
+
+import os
+import re
+import time
+import queue
+import threading
+import subprocess
+import asyncio
+from concurrent.futures import ProcessPoolExecutor
+
+import numpy as np
+from scipy.signal import resample_poly
+from aiohttp import web
+
+
+class PersistentPiper:
+    """
+    Wraps piper.exe as a long-lived subprocess, keeping the voice model
+    loaded in memory across synthesis requests.
+
+    audio= values in Piper's stderr log are cumulative since process start
+    (verified empirically: three sequential requests produced 0.464 → 3.773 →
+    4.342 sec, not per-utterance durations). Delta slicing is therefore:
+        delta = current_cumulative - prev_cumulative
+    and expected PCM bytes = round(delta * 22050) * 2.
+    """
+
+    SAMPLE_RATE = 22050
+    BYTES_PER_SAMPLE = 2
+
+    def __init__(self, piper_path: str, voice_model: str):
+        self.piper_path = piper_path
+        self.voice_model = voice_model
+        self.proc: subprocess.Popen | None = None
+        self._stdout_buffer = bytearray()
+        self._buffer_lock = threading.Lock()
+        self._completion_queue: queue.Queue[float] = queue.Queue()
+        self._ready_event = threading.Event()
+        self._running = False
+        self._prev_cumulative = 0.0
+        self._stdout_thread: threading.Thread | None = None
+        self._stderr_thread: threading.Thread | None = None
+
+    # ── lifecycle ────────────────────────────────────────────────────────────
+
+    def _reset_process_state(self) -> None:
+        """Clear all per-process state. Must be called before every spawn."""
+        with self._buffer_lock:
+            self._stdout_buffer.clear()
+        while True:
+            try:
+                self._completion_queue.get_nowait()
+            except queue.Empty:
+                break
+        self._prev_cumulative = 0.0
+        self._ready_event.clear()
+
+    def start(self) -> None:
+        self._running = True
+        self._reset_process_state()
+        proc = subprocess.Popen(
+            [self.piper_path, "--model", self.voice_model, "--output_raw"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=False,
+        )
+        self.proc = proc
+        self._stdout_thread = threading.Thread(
+            target=self._read_stdout, args=(proc,), daemon=True, name="piper-stdout"
+        )
+        self._stderr_thread = threading.Thread(
+            target=self._read_stderr, args=(proc,), daemon=True, name="piper-stderr"
+        )
+        self._stdout_thread.start()
+        self._stderr_thread.start()
+        if not self._ready_event.wait(timeout=10.0):
+            raise RuntimeError("Piper did not initialize within 10 s")
+
+    def close(self, join_threads: bool = False) -> None:
+        self._running = False
+        proc = self.proc
+        self.proc = None
+        if join_threads:
+            for t in (self._stdout_thread, self._stderr_thread):
+                if t and t.is_alive():
+                    t.join(timeout=2.0)
+        self._stdout_thread = None
+        self._stderr_thread = None
+        if proc is None:
+            return
+        try:
+            proc.stdin.close()
+        except (BrokenPipeError, OSError):
+            pass
+        proc.terminate()
+        try:
+            proc.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            try:
+                proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                pass
+
+    # ── background reader threads ─────────────────────────────────────────────
+
+    def _read_stdout(self, proc: subprocess.Popen) -> None:
+        """Continuously drains stdout pipe to prevent OS buffer deadlock."""
+        while self._running and proc is self.proc:
+            try:
+                data = proc.stdout.read1(4096)
+                if not data:
+                    break
+                with self._buffer_lock:
+                    self._stdout_buffer.extend(data)
+            except Exception:
+                break
+
+    def _read_stderr(self, proc: subprocess.Popen) -> None:
+        """Parses cumulative audio duration from Piper's stderr log lines."""
+        audio_val = 0.0
+        while self._running and proc is self.proc:
+            try:
+                line = proc.stderr.readline()
+                if not line:
+                    break
+                s = line.decode("utf-8", errors="replace")
+                if "Initialized piper" in s:
+                    self._ready_event.set()
+                    continue
+                m = re.search(r"audio=(\d+\.\d+) sec", s)
+                if m:
+                    audio_val = float(m.group(1))
+                if "Real-time factor:" in s:
+                    self._completion_queue.put(audio_val)
+                    audio_val = 0.0
+            except Exception:
+                break
+
+    # ── synthesis ─────────────────────────────────────────────────────────────
+
+    def _invalidate_proc(self) -> None:
+        """Mark process as dead; next synthesize() call will respawn."""
+        self.proc = None
+
+    def _check_and_respawn(self) -> None:
+        if self.proc is None or self.proc.poll() is not None:
+            print(f"[TTS/{os.getpid()}] Piper dead — respawning")
+            self.close(join_threads=True)
+            self.start()
+
+    def synthesize(self, text: str) -> bytes:
+        """
+        Returns raw 22050 Hz PCM16 mono bytes for the given text.
+
+        Newline sanitization: any \\r or \\n in text is replaced with a space
+        before writing to stdin. This guarantees exactly one stdin line →
+        exactly one 'Real-time factor:' log line → one completion event.
+        """
+        self._check_and_respawn()
+
+        clean = text.replace("\r", " ").replace("\n", " ").strip()
+        if not clean:
+            return b""
+
+        self.proc.stdin.write((clean + "\n").encode("utf-8"))
+        self.proc.stdin.flush()
+
+        try:
+            current_cumulative = self._completion_queue.get(timeout=8.0)
+        except queue.Empty:
+            self._invalidate_proc()
+            raise TimeoutError("Piper synthesis timed out (process may have died)")
+
+        delta = current_cumulative - self._prev_cumulative
+        expected_bytes = int(round(delta * self.SAMPLE_RATE)) * self.BYTES_PER_SAMPLE
+
+        deadline = time.monotonic() + 2.0
+        while True:
+            with self._buffer_lock:
+                have = len(self._stdout_buffer)
+            if have >= expected_bytes:
+                break
+            if time.monotonic() > deadline:
+                self._invalidate_proc()
+                raise TimeoutError(
+                    f"Stdout fill timeout: have {have} B, need {expected_bytes} B"
+                )
+            time.sleep(0.005)
+
+        with self._buffer_lock:
+            pcm_22k = bytes(self._stdout_buffer[:expected_bytes])
+            del self._stdout_buffer[:expected_bytes]
+
+        self._prev_cumulative = current_cumulative
+        return pcm_22k
+
+
+# ── process-pool entry points ─────────────────────────────────────────────────
+
+_piper: PersistentPiper | None = None
+
+
+def normalize_text_for_telephony(text: str) -> str:
+    """Normalizes raw LLM text for natural telephony TTS output."""
+    # 1. Clean markdown formatting
+    text = re.sub(r'[*_#`~]', '', text)
+    
+    # 2. Currency normalization
+    text = re.sub(r'(?:Rs\.?|₹)\s*(\d+)', r'\1 rupees', text)
+    text = re.sub(r'\$\s*(\d+)', r'\1 dollars', text)
+    
+    # 3. Phone number digit spacing
+    def format_phone(m):
+        digits = re.sub(r'\D', '', m.group(0))
+        if len(digits) == 10:
+            return " ".join(digits[:5]) + ", " + " ".join(digits[5:])
+        elif len(digits) > 5:
+            return " ".join(digits)
+        return m.group(0)
+
+    text = re.sub(r'\b(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b', format_phone, text)
+    
+    # 4. Times (e.g. 10 AM / 5 PM)
+    text = re.sub(r'\b(\d{1,2})\s*([AaPp][Mm])\b', r'\1 \2', text)
+
+    return text.strip()
+
+
+def init_worker() -> None:
+    """Pool initializer. Spawns and warms one PersistentPiper per worker process."""
+    global _piper
+    piper_path = r"c:\daily_works\superfone_call\piper\piper\piper.exe"
+    voice_model = os.environ.get("PIPER_VOICE_MODEL", r"c:\daily_works\superfone_call\models\en_US-lessac-medium.onnx")
+    if not os.path.exists(piper_path):
+        raise FileNotFoundError(f"Piper executable not found: {piper_path}")
+    if not os.path.exists(voice_model):
+        raise FileNotFoundError(f"Voice model not found: {voice_model}")
+    _piper = PersistentPiper(piper_path=piper_path, voice_model=voice_model)
+    _piper.start()
+    print(f"[TTS Worker {os.getpid()}] Persistent Piper initialized (pid={_piper.proc.pid})")
+
+
+def generate_tts_and_resample(text: str, enqueue_time: float) -> dict:
+    """
+    Synthesize text via persistent Piper, then downsample 22050 Hz → 8000 Hz.
+
+    Returns a dict with:
+      audio        — raw PCM16 mono at 8000 Hz
+      queue_wait_ms — wall-clock time from HTTP enqueue to worker task start
+      inference_ms  — Piper synthesis + resample_poly only (no queue wait)
+
+    Timing uses time.time() for queue_wait (cross-process wall clock) and
+    time.perf_counter() for inference (intra-process high resolution).
+    """
+    # Queue wait: wall-clock delta from caller's enqueue timestamp
+    worker_start_time = time.time()
+    queue_wait_ms = (worker_start_time - enqueue_time) * 1000.0
+
+    if _piper is None:
+        raise RuntimeError("TTS worker not initialized")
+
+    t_infer = time.perf_counter()
+    clean_text = normalize_text_for_telephony(text)
+    pcm_22k = _piper.synthesize(clean_text) if clean_text else b""
+    if pcm_22k:
+        samples = np.frombuffer(pcm_22k, dtype=np.int16).astype(np.float32)
+        resampled = resample_poly(samples, 160, 441)   # 22050 → 8000 Hz
+        
+        # Prevent int16 integer overflow / wrap-around distortion buzz
+        resampled = np.clip(resampled, -32767.0, 32767.0)
+        
+        # Apply 1ms (8 samples @ 8kHz) zero-crossing micro-ramp to eliminate edge clicks without acoustic dips
+        fade_len = min(8, len(resampled) // 16)
+        if fade_len > 0:
+            fade_in = np.linspace(0.0, 1.0, fade_len)
+            fade_out = np.linspace(1.0, 0.0, fade_len)
+            resampled[:fade_len] *= fade_in
+            resampled[-fade_len:] *= fade_out
+
+        audio_bytes = resampled.astype(np.int16).tobytes()
+    else:
+        audio_bytes = b""
+    inference_ms = (time.perf_counter() - t_infer) * 1000.0
+
+    return {
+        "audio": audio_bytes,
+        "queue_wait_ms": round(queue_wait_ms, 3),
+        "inference_ms": round(inference_ms, 3),
+    }
+
+
+def kill_piper_and_recover(text: str) -> dict:
+    """
+    Worker-side kill/recover test. Must be submitted via the same
+    ProcessPoolExecutor used by the service.
+
+    Two-checkpoint protocol:
+      1. Kill old process → force respawn → assert fresh state.
+      2. Synthesize recovery utterance → assert audio returned.
+    """
+    global _piper
+    assert _piper is not None, "Worker not initialized"
+
+    pid_before = _piper.proc.pid if _piper.proc else None
+    _piper.proc.kill()
+    _piper.proc.wait()
+    _piper._invalidate_proc()
+    _piper._check_and_respawn()
+    pid_after = _piper.proc.pid if _piper.proc else None
+
+    fresh_state = {
+        "pid_before": pid_before,
+        "pid_after": pid_after,
+        "pid_changed": pid_after != pid_before,
+        "prev_cumulative": _piper._prev_cumulative,
+        "buffer_len": len(_piper._stdout_buffer),
+        "queue_empty": _piper._completion_queue.empty(),
+    }
+
+    result = generate_tts_and_resample(text, time.time())
+    fresh_state["audio_bytes"] = len(result["audio"])
+    return fresh_state
+
+
+# ── HTTP server ───────────────────────────────────────────────────────────────
+
+class TTSServer:
+    def __init__(self, host: str = "127.0.0.1", port: int = 9095, workers: int = 2):
+        self.host = host
+        self.port = port
+        self.workers = workers
+    async def start(self) -> None:
+        self.executor = ProcessPoolExecutor(
+            max_workers=self.workers,
+            initializer=init_worker,
+        )
+        # Pre-warm all worker processes so Piper subprocesses are spawned and initialized
+        loop = asyncio.get_running_loop()
+        warmup_tasks = [
+            loop.run_in_executor(self.executor, generate_tts_and_resample, "Hello", time.time())
+            for _ in range(self.workers)
+        ]
+        await asyncio.gather(*warmup_tasks)
+        print(f"[TTS Server] All {self.workers} worker processes fully pre-warmed and ready.")
+
+        app = web.Application()
+        app.router.add_post("/tts", self.handle_tts)
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, self.host, self.port)
+        await site.start()
+        print(
+            f"TTS Server listening on http://{self.host}:{self.port}/tts "
+            f"with {self.workers} persistent-Piper workers"
+        )
+
+    async def handle_tts(self, request: web.Request) -> web.Response:
+        t_handler_start = time.perf_counter()
+        data = await request.json()
+        text = data.get("text", "")
+        call_id = data.get("call_id")
+        # Wall-clock enqueue time for cross-process queue-wait measurement
+        enqueue_time = float(data.get("enqueue_time", time.time()))
+
+        loop = asyncio.get_running_loop()
+        try:
+            result = await loop.run_in_executor(
+                self.executor, generate_tts_and_resample, text, enqueue_time
+            )
+            audio_pcm16_8k = result["audio"]
+            queue_wait_ms = result["queue_wait_ms"]
+            inference_ms = result["inference_ms"]
+        except Exception as e:
+            print(f"TTS Service Error: {e}")
+            audio_pcm16_8k = b""
+            queue_wait_ms = 0.0
+            inference_ms = 0.0
+
+        latency_ms = (time.perf_counter() - t_handler_start) * 1000.0
+        return web.Response(
+            body=audio_pcm16_8k,
+            content_type="application/octet-stream",
+            headers={
+                "X-Latency-MS": str(round(latency_ms, 3)),
+                "X-Call-ID": str(call_id),
+                "X-Queue-Wait-MS": str(queue_wait_ms),
+                "X-Inference-MS": str(inference_ms),
+            },
+        )
+
+    def shutdown(self) -> None:
+        if self.executor:
+            self.executor.shutdown()
+
+
+if __name__ == "__main__":
+    workers = int(os.environ.get("TTS_WORKERS", "4"))
+    server = TTSServer(workers=workers)
+    loop = asyncio.new_event_loop()
+
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(server.start())
+        loop.run_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.shutdown()
