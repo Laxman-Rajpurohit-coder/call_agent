@@ -1,0 +1,364 @@
+cases:
+  # Normal customer care sentences (25 cases)
+  - id: eng_care_001
+    text: "Hello, how may I help you today?"
+    category: normal_care
+    language: en
+    expected_entities: []
+
+  - id: eng_care_002
+    text: "Thank you for reaching out to us. How can I assist you with your inquiry?"
+    category: normal_care
+    language: en
+    expected_entities: []
+
+  - id: eng_care_003
+    text: "We appreciate your interest in our community welfare programs."
+    category: normal_care
+    language: en
+    expected_entities: []
+
+  - id: eng_care_004
+    text: "Our team will be glad to assist you with the registration process."
+    category: normal_care
+    language: en
+    expected_entities: []
+
+  - id: eng_care_005
+    text: "Please let me know if you would like more information about our educational support initiatives."
+    category: normal_care
+    language: en
+    expected_entities: ["educational support"]
+
+  - id: eng_care_006
+    text: "You can visit our main office or reach out through our official channels."
+    category: normal_care
+    language: en
+    expected_entities: []
+
+  - id: eng_care_007
+    text: "All community health services are offered free of charge to eligible families."
+    category: normal_care
+    language: en
+    expected_entities: ["community health services"]
+
+  - id: eng_care_008
+    text: "I am happy to guide you through our social welfare programs."
+    category: normal_care
+    language: en
+    expected_entities: ["social welfare"]
+
+  - id: eng_care_009
+    text: "Would you like to know more about the foundation's history and background?"
+    category: normal_care
+    language: en
+    expected_entities: []
+
+  - id: eng_care_010
+    text: "Our representatives are available during regular business hours to help you."
+    category: normal_care
+    language: en
+    expected_entities: []
+
+  - id: eng_care_011
+    text: "Thank you for supporting our community mission and charitable goals."
+    category: normal_care
+    language: en
+    expected_entities: []
+
+  - id: eng_care_012
+    text: "We provide scholarship guidance and school supplies to local students in need."
+    category: normal_care
+    language: en
+    expected_entities: ["scholarship"]
+
+  - id: eng_care_013
+    text: "Please hold on for a moment while I review your request details."
+    category: normal_care
+    language: en
+    expected_entities: []
+
+  - id: eng_care_014
+    text: "I understand your question, and I will be happy to provide full details."
+    category: normal_care
+    language: en
+    expected_entities: []
+
+  - id: eng_care_015
+    text: "We organize regular health checkup camps across the district."
+    category: normal_care
+    language: en
+    expected_entities: ["health checkup"]
+
+  - id: eng_care_016
+    text: "You are welcome to participate in our upcoming community welfare drive."
+    category: normal_care
+    language: en
+    expected_entities: []
+
+  - id: eng_care_017
+    text: "If you have specific questions about our programs, please feel free to ask."
+    category: normal_care
+    language: en
+    expected_entities: []
+
+  - id: eng_care_018
+    text: "We aim to respond to all community inquiries within one business day."
+    category: normal_care
+    language: en
+    expected_entities: []
+
+  - id: eng_care_019
+    text: "Our mission is to uplift underprivileged families through education and healthcare."
+    category: normal_care
+    language: en
+    expected_entities: ["education", "healthcare"]
+
+  - id: eng_care_020
+    text: "I will make sure your request is noted for our support team."
+    category: normal_care
+    language: en
+    expected_entities: []
+
+  - id: eng_care_021
+    text: "Feel free to visit us during regular office hours for in-person assistance."
+    category: normal_care
+    language: en
+    expected_entities: []
+
+  - id: eng_care_022
+    text: "We are committed to transparency and dedicated public service."
+    category: normal_care
+    language: en
+    expected_entities: []
+
+  - id: eng_care_023
+    text: "Is there anything else I can clarify for you today?"
+    category: normal_care
+    language: en
+    expected_entities: []
+
+  - id: eng_care_024
+    text: "Thank you for calling. We look forward to assisting you again soon."
+    category: normal_care
+    language: en
+    expected_entities: []
+
+  - id: eng_care_025
+    text: "Have a wonderful day and thank you for connecting with us."
+    category: normal_care
+    language: en
+    expected_entities: []
+
+  # Short greetings & confirmations (10 cases)
+  - id: eng_greet_001
+    text: "Good morning."
+    category: greetings_confirmations
+    language: en
+    expected_entities: []
+
+  - id: eng_greet_002
+    text: "Good afternoon!"
+    category: greetings_confirmations
+    language: en
+    expected_entities: []
+
+  - id: eng_greet_003
+    text: "Aloha, welcome to our helpline."
+    category: greetings_confirmations
+    language: en
+    expected_entities: ["Aloha"]
+
+  - id: eng_greet_004
+    text: "Understood, thank you."
+    category: greetings_confirmations
+    language: en
+    expected_entities: []
+
+  - id: eng_greet_005
+    text: "Certainly! I can help with that."
+    category: greetings_confirmations
+    language: en
+    expected_entities: []
+
+  - id: eng_greet_006
+    text: "Yes, that is correct."
+    category: greetings_confirmations
+    language: en
+    expected_entities: []
+
+  - id: eng_greet_007
+    text: "You are very welcome."
+    category: greetings_confirmations
+    language: en
+    expected_entities: []
+
+  - id: eng_greet_008
+    text: "Goodbye, have a great day!"
+    category: greetings_confirmations
+    language: en
+    expected_entities: []
+
+  - id: eng_greet_009
+    text: "One moment, please."
+    category: greetings_confirmations
+    language: en
+    expected_entities: []
+
+  - id: eng_greet_010
+    text: "Alright, let me check that for you."
+    category: greetings_confirmations
+    language: en
+    expected_entities: []
+
+  # Long multi-sentence responses (15 cases)
+  - id: eng_long_001
+    text: "The foundation is dedicated to improving community wellbeing across Rajasthan. We focus on educational scholarships for underprivileged children, essential medical aid for families, and vocational training for young adults."
+    category: long_multisentence
+    language: en
+    expected_entities: ["Rajasthan", "scholarships", "medical aid", "vocational training"]
+
+  - id: eng_long_002
+    text: "Our administrative office operates six days a week from Monday through Saturday. We are open from 9:00 AM to 5:00 PM, and our staff is always ready to assist visitors in person."
+    category: long_multisentence
+    language: en
+    expected_entities: ["Monday", "Saturday", "9:00 AM", "5:00 PM"]
+
+  - id: eng_long_003
+    text: "To become a volunteer, you can submit your details online or visit our Balotra office. Our volunteer coordinator will reach out within two business days to discuss current opportunities."
+    category: long_multisentence
+    language: en
+    expected_entities: ["Balotra"]
+
+  - id: eng_long_004
+    text: "Donations support critical welfare programs directly. You can contribute via our secure online donation portal, bank transfer, or by visiting our reception desk in Balotra."
+    category: long_multisentence
+    language: en
+    expected_entities: ["Balotra"]
+
+  - id: eng_long_005
+    text: "We organize monthly medical camps where experienced doctors provide free health consultations, basic diagnostic tests, and necessary prescription medications to community members."
+    category: long_multisentence
+    language: en
+    expected_entities: ["medical camps", "consultations"]
+
+  - id: eng_long_006
+    text: "Students seeking financial aid can apply through our annual educational support program. Applications require school enrollment verification, academic records, and family income details."
+    category: long_multisentence
+    language: en
+    expected_entities: ["educational support program"]
+
+  - id: eng_long_007
+    text: "Our directors, Sanjay Gahlot and Paras Mal Gahlot, oversee the foundation's strategic initiatives. Their vision guides our community welfare and social outreach efforts."
+    category: long_multisentence
+    language: en
+    expected_entities: ["Sanjay Gahlot", "Paras Mal Gahlot"]
+
+  - id: eng_long_008
+    text: "If you require emergency assistance, please contact the local emergency services immediately. For general community support, our team is available during standard office hours."
+    category: long_multisentence
+    language: en
+    expected_entities: []
+
+  - id: eng_long_009
+    text: "We regularly update our community board with upcoming workshops, educational seminars, and health drives. All residents of Balotra and neighboring areas are welcome to attend."
+    category: long_multisentence
+    language: en
+    expected_entities: ["Balotra"]
+
+  - id: eng_long_010
+    text: "Thank you for reaching out to us today. If you need any further assistance regarding our programs, please do not hesitate to contact our office directly."
+    category: long_multisentence
+    language: en
+    expected_entities: []
+
+  - id: eng_long_011
+    text: "We believe that accessible education creates lasting social change. Through community partnerships, we sponsor school fees and distribute textbooks to deserving students."
+    category: long_multisentence
+    language: en
+    expected_entities: []
+
+  - id: eng_long_012
+    text: "Our healthcare initiatives include maternal health awareness, pediatric nutrition drives, and vision screening camps organized throughout the year."
+    category: long_multisentence
+    language: en
+    expected_entities: ["maternal health", "vision screening"]
+
+  - id: eng_long_013
+    text: "Please keep your reference number handy when following up on an application. This helps our administrative staff retrieve your records quickly."
+    category: long_multisentence
+    language: en
+    expected_entities: []
+
+  - id: eng_long_014
+    text: "The foundation welcomes partnerships with local institutions and non-profit organizations. Together, we can expand the reach of our community assistance programs."
+    category: long_multisentence
+    language: en
+    expected_entities: []
+
+  - id: eng_long_015
+    text: "We value feedback from community members to help improve our services. Please feel free to share your thoughts with our team at any time."
+    category: long_multisentence
+    language: en
+    expected_entities: []
+
+  # Difficult punctuation & questions (10 cases)
+  - id: eng_punc_001
+    text: "Would you like me to connect you with a representative right now?"
+    category: punctuation_questions
+    language: en
+    expected_entities: []
+
+  - id: eng_punc_002
+    text: "Is there anything else—perhaps our office hours or location—that you need?"
+    category: punctuation_questions
+    language: en
+    expected_entities: []
+
+  - id: eng_punc_003
+    text: "We offer support for: student education, healthcare, and family aid."
+    category: punctuation_questions
+    language: en
+    expected_entities: ["education", "healthcare"]
+
+  - id: eng_punc_004
+    text: "Wait... did you say Balotra, or were you asking about Barmer?"
+    category: punctuation_questions
+    language: en
+    expected_entities: ["Balotra", "Barmer"]
+
+  - id: eng_punc_005
+    text: "Please note: office hours are 9:00 AM to 5:00 PM (Monday-Saturday)."
+    category: punctuation_questions
+    language: en
+    expected_entities: ["9:00 AM", "5:00 PM"]
+
+  - id: eng_punc_006
+    text: "Could you please confirm your name, phone number, and location?"
+    category: punctuation_questions
+    language: en
+    expected_entities: []
+
+  - id: eng_punc_007
+    text: "Yes! That is absolutely right; we will be glad to assist."
+    category: punctuation_questions
+    language: en
+    expected_entities: []
+
+  - id: eng_punc_008
+    text: "Are you inquiring about donations, volunteering, or medical services?"
+    category: punctuation_questions
+    language: en
+    expected_entities: []
+
+  - id: eng_punc_009
+    text: "Well, let's see: we have two upcoming programs this weekend."
+    category: punctuation_questions
+    language: en
+    expected_entities: []
+
+  - id: eng_punc_010
+    text: "Should I go ahead and register your contact information now?"
+    category: punctuation_questions
+    language: en
+    expected_entities: []

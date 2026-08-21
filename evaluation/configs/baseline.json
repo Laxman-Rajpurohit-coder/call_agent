@@ -1,0 +1,58 @@
+{
+  "evaluation_version": "0.1",
+  "git_tag": "v0.1-eval-baseline",
+  "git_commit": "ba3d9b6",
+  "transport_modes": [
+    "direct_audiosocket",
+    "asterisk_sip"
+  ],
+  "audio": {
+    "telephony_sample_rate": 8000,
+    "stt_sample_rate": 16000,
+    "channels": 1,
+    "sample_format": "pcm_s16le"
+  },
+  "models": {
+    "stt": "faster-whisper-base.en",
+    "llm": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
+    "tts_english": "en_US-lessac-medium.onnx",
+    "tts_hindi": "hi_IN-pratham-medium.onnx",
+    "vad": "silero_vad.onnx"
+  },
+  "vad_tuning": {
+    "speech_threshold": 0.45,
+    "barge_in_threshold": 0.52,
+    "confirm_frames": 3,
+    "hangover_frames": 12,
+    "barge_in_confirm_frames": 4,
+    "pre_roll_frames": 25
+  },
+  "energy_gate": {
+    "peak_level_threshold": 400,
+    "max_frame_rms_threshold": 50.0,
+    "window_size_ms": 20
+  },
+  "stt_filters": {
+    "no_speech_threshold": 0.65,
+    "avg_logprob_floor": -1.20,
+    "compression_ratio_threshold": 2.4,
+    "phantom_phrase_max_words": 3
+  },
+  "thresholds": {
+    "task_success_rate": 0.90,
+    "critical_entity_accuracy": 0.98,
+    "barge_in_success_rate": 0.90,
+    "max_false_barge_in_rate": 0.05,
+    "max_repetition_loop_rate": 0.01,
+    "max_critical_failures": 0,
+    "max_total_barge_in_stop_time_ms": 350,
+    "max_playback_queue_underflow_count": 0,
+    "max_playback_queue_timeout_count": 0,
+    "max_state_flapping_count": 0
+  },
+  "observational_metrics": {
+    "speech_onset_to_barge_in_trigger_ms": null,
+    "barge_in_trigger_to_playback_stop_ms": null,
+    "comfort_silence_frames": null
+  }
+}

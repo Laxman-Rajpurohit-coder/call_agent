@@ -4,7 +4,6 @@ __pycache__/
 *.log
 *.pcap
 *.mp4
-*.wav
 *.mp3
 *.gguf
 *.onnx
@@ -12,4 +11,20 @@ call_gateway.log
 MicroSIP-3.22.12/
 piper/
 storage/*.db
+
+# Generated evaluation artifacts
 evaluation/artifacts/
+evaluation/reports/generated/
+evaluation/reports/tts/
+evaluation/audio/generated/
+evaluation/tts/generated/
+evaluation/tts/analyzed/
+recordings/
+scratch/
+*.wav
+
+# Keep reference evaluation fixtures
+!evaluation/audio/reference/
+!evaluation/audio/reference/**/*.wav
+!evaluation/audio/synthetic/
+!evaluation/audio/synthetic/**/*.wav

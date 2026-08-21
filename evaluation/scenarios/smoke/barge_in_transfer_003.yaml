@@ -1,0 +1,28 @@
+id: barge_in_transfer_003
+suite: smoke
+language: en
+category: barge_in
+transport: direct_audiosocket
+caller_goal: barge_in_interruption_test
+description: "Caller interrupts agent speech to ask for physical address"
+
+barge_in:
+  initial_audio: "evaluation/audio/synthetic/barge_in_director_001_initial.wav"
+  interrupt_audio: "evaluation/audio/synthetic/barge_in_transfer_003_interrupt.wav"
+  interrupt_after_playback_ms: 1000
+
+required_facts:
+  - "Gandhi Pura"
+  - "Balotra"
+
+forbidden_facts:
+  - "Jaipur"
+
+expected_tools: []
+
+success_conditions:
+  - barge_in_detected
+  - playback_halted_under_350ms
+  - interruption_speech_transcribed
+  - interruption_facts_present
+  - zero_queue_flapping

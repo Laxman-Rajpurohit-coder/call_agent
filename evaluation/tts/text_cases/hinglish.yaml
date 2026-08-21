@@ -1,0 +1,90 @@
+cases:
+  - id: hng_care_001
+    text: "Aapka swagat hai. Main aapki kya help kar sakti hoon?"
+    category: hinglish_care
+    language: hi-en
+    expected_entities: []
+
+  - id: hng_care_002
+    text: "Foundation ka office Gandhi Pura, Balotra me situated hai."
+    category: hinglish_care
+    language: hi-en
+    expected_entities: ["Gandhi Pura", "Balotra"]
+
+  - id: hng_care_003
+    text: "Hamare working hours Monday se Saturday, 9:00 AM se 5:00 PM tak hain."
+    category: hinglish_care
+    language: hi-en
+    expected_entities: ["Monday", "Saturday", "9:00 AM", "5:00 PM"]
+
+  - id: hng_care_004
+    text: "Aap volunteer registration ke liye apna naam aur mobile number bata sakte hain."
+    category: hinglish_care
+    language: hi-en
+    expected_entities: ["volunteer registration"]
+
+  - id: hng_care_005
+    text: "Online donation ke liye aap hamari official website visit kar sakte hain."
+    category: hinglish_care
+    language: hi-en
+    expected_entities: ["donation", "website"]
+
+  - id: hng_care_006
+    text: "Hamari team student scholarships aur healthcare support provide karti hai."
+    category: hinglish_care
+    language: hi-en
+    expected_entities: ["scholarships", "healthcare"]
+
+  - id: hng_care_007
+    text: "Foundation ke directors Sanjay Gahlot aur Paras Mal Gahlot hain."
+    category: hinglish_care
+    language: hi-en
+    expected_entities: ["Sanjay Gahlot", "Paras Mal Gahlot"]
+
+  - id: hng_care_008
+    text: "Kya aapko medical camp ya education program ke baare me information chahiye?"
+    category: hinglish_care
+    language: hi-en
+    expected_entities: []
+
+  - id: hng_care_009
+    text: "Aap hamare receptionist se directly office hours me contact kar sakte hain."
+    category: hinglish_care
+    language: hi-en
+    expected_entities: ["receptionist"]
+
+  - id: hng_care_010
+    text: "Please ek moment hold kijiye, main details check kar rahi hoon."
+    category: hinglish_care
+    language: hi-en
+    expected_entities: []
+
+  - id: hng_care_011
+    text: "Free health checkup camp every month Balotra me organize hota hai."
+    category: hinglish_care
+    language: hi-en
+    expected_entities: ["Balotra"]
+
+  - id: hng_care_012
+    text: "Aapka application process ho chuka hai, hamari team jald contact karegi."
+    category: hinglish_care
+    language: hi-en
+    expected_entities: []
+
+  - id: hng_care_013
+    text: "Social welfare drive me participate karne ke liye aapka welcome hai."
+    category: hinglish_care
+    language: hi-en
+    expected_entities: []
+
+  - id: hng_care_014
+    text: "Call karne ke liye thank you so much. Have a great day ahead!"
+    category: hinglish_care
+    language: hi-en
+    expected_entities: []
+
+  - id: hng_care_015
+    text: "Kya main aapki kisi aur issue ya query me help kar sakti hoon?"
+    category: hinglish_care
+    language: hi-en
+    expected_entities: []

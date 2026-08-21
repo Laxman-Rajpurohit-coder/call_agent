@@ -1,0 +1,26 @@
+allowed_facts:
+- Gandhi Pura
+- Balotra
+- Barmer
+- Rajasthan
+caller_goal: contact_number
+category: normal
+description: 'Batch 1 Scenario: Can you give me the foundation contact phone number?'
+expected_tools: []
+forbidden_facts:
+- '9876543210'
+- '1234567890'
+id: contact_number_001
+language: en
+required_facts:
+- don't have
+- contact
+success_conditions:
+- stt_not_empty
+- required_facts_present
+- forbidden_facts_absent
+- agent_audio_generated
+suite: smoke
+transport: direct_audiosocket
+turns:
+- audio_file: evaluation/audio/synthetic/contact_number_001.wav

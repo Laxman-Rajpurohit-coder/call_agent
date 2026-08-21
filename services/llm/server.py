@@ -13,10 +13,10 @@ LLM_MODEL = os.path.join(MODELS_DIR, "qwen2.5-1.5b-instruct-q4_k_m.gguf")
 
 ABBREVIATIONS = {
     'mr.', 'mrs.', 'ms.', 'dr.', 'prof.', 'sr.', 'jr.', 'rs.', 'e.g.', 'i.e.', 'vs.', 'etc.',
-    'approx.', 'no.', 'st.', 'a.m.', 'p.m.', 'am.', 'pm.', 'pin.', 'dist.', 'raj.', 'co.', 'ltd.', 'inc.'
+    'approx.', 'no.', 'st.', 'pin.', 'dist.', 'raj.', 'co.', 'ltd.', 'inc.'
 }
 
-def extract_sentences(buffer: str):
+def extract_sentences(buffer: str, min_words: int = 4):
     sentences = []
     pattern = re.compile(r'([.?!]+(?:\s+|\n+))')
     last_idx = 0
@@ -27,6 +27,9 @@ def extract_sentences(buffer: str):
         if tokens:
             last_word = tokens[-1].lower().rstrip('?!')
             if last_word in ABBREVIATIONS or re.search(r'\d+\.\s*$', candidate) or re.search(r'\b[A-Za-z]\.\s*$', candidate):
+                continue
+            # Keep micro-openers (< min_words) attached to the subsequent clause for natural TTS flow
+            if len(tokens) < min_words:
                 continue
         if len(candidate) < 5 and not any(c in candidate for c in ".?!"):
             continue

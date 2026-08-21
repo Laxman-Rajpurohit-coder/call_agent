@@ -29,7 +29,7 @@ class SileroEndpointingEngine:
         barge_in_threshold: float = 0.52,
         pre_roll_frames: int = 25,        # 500ms @ 20ms/frame ring buffer
         confirm_frames_needed: int = 3,   # 60ms fast speech confirmation
-        hangover_frames_needed: int = 12, # 240ms ultra-snappy endpointing
+        hangover_frames_needed: int = 20, # 400ms natural conversational clause endpointing
         barge_in_frames_needed: int = 4,  # 80ms fast & reliable barge-in confirmation
         min_utterance_frames: int = 10,   # 200ms min utterance
         max_utterance_frames: int = 750,  # 15.0s max

@@ -1,0 +1,26 @@
+allowed_facts:
+- Gandhi Pura
+- Balotra
+- Barmer
+- Rajasthan
+caller_goal: hospital_education
+category: normal
+description: 'Batch 1 Scenario: What services do you provide for education and medical
+  care?'
+expected_tools: []
+forbidden_facts:
+- we do not offer services
+id: hospital_education_001
+language: en
+required_facts:
+- educational support
+- health services
+success_conditions:
+- stt_not_empty
+- required_facts_present
+- forbidden_facts_absent
+- agent_audio_generated
+suite: smoke
+transport: direct_audiosocket
+turns:
+- audio_file: evaluation/audio/synthetic/hospital_education_001.wav
