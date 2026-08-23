@@ -85,7 +85,7 @@ def transcribe_audio(audio_pcm16_8k: bytes, enqueue_time: float) -> dict:
             compression_ratio_threshold=2.4,
             log_prob_threshold=-0.7,
             no_speech_threshold=0.4,
-            initial_prompt="Malisaini Samaj Seva Foundation, Balotra, Barmer, Sanjay Gahlot, Paras Mal Gahlot, Gandhi Pura.",
+            initial_prompt="Namaste, hello, natural open conversation in English and Hindi.",
         )
 
         text_parts = []
@@ -103,6 +103,13 @@ def transcribe_audio(audio_pcm16_8k: bytes, enqueue_time: float) -> dict:
             compression_ratios.append(segment.compression_ratio)
 
         text = "".join(text_parts).strip()
+
+        # Remove unwanted non-Latin/non-Devanagari characters (e.g. Urdu/Arabic/Chinese Whisper glitches)
+        cleaned_text = re.sub(r'[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\u4E00-\u9FFF]', '', text).strip()
+        if cleaned_text != text:
+            print(f"[STT Worker {os.getpid()}] Stripped foreign script glitch: '{text}' -> '{cleaned_text}'")
+            text = cleaned_text
+
         confidence = float(np.mean(confidences)) if confidences else 0.0
         confidence = max(0.0, min(1.0, confidence))
         avg_logprob = float(np.mean(logprobs)) if logprobs else -99.0
@@ -122,20 +129,20 @@ def transcribe_audio(audio_pcm16_8k: bytes, enqueue_time: float) -> dict:
             text = ""
 
         # 3. Hallucination filter: discard high no_speech_prob and known hallucination priors
-        # Real short words ("Hello", "Balotra", "Aloha") have avg_logprob > -0.90 and no_speech_prob < 0.50
+        # Real short words ("Hello", "Namaste", "Yes") have avg_logprob > -0.90 and no_speech_prob < 0.50
         is_hallucination = False
         reject_reason = ""
 
-        if no_speech_prob > 0.65:
+        if no_speech_prob > 0.60:
             is_hallucination = True
             reject_reason = "no_speech_probability"
         elif avg_logprob < -1.20:
             is_hallucination = True
             reject_reason = "low_avg_logprob"
-        elif confidence < 0.50 and len(text.split()) <= 3:
+        elif confidence < 0.50 and len(text.split()) <= 4:
             # Check if text matches common Whisper phantom phrases
             clean_t = text.lower().strip(" .?!,")
-            if any(clean_t.startswith(p) for p in ["i don't", "i know", "i love", "thank you", "you're welcome", "bye"]):
+            if any(clean_t.startswith(p) for p in ["i don't", "i know", "i love", "thank you", "you're welcome", "bye", "subtitles", "amara"]):
                 is_hallucination = True
                 reject_reason = "phantom_phrase_prior"
 

@@ -18,7 +18,8 @@ from services.call_gateway.vad_detector import SileroEndpointingEngine
 # ── Logging ──────────────────────────────────────────────────────────────────
 
 try:
-    sys.stdout.reconfigure(line_buffering=True)
+    sys.stdout.reconfigure(encoding="utf-8", line_buffering=True, errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", line_buffering=True, errors="replace")
 except Exception:
     pass
 
@@ -393,13 +394,13 @@ async def stream_audio_queue_to_asterisk(
         call_id, sent_chunks, expected_s, elapsed_s, underrun_count
     )
 
-async def stream_audio_to_asterisk(writer, audio_pcm16_8k: bytes, cancel_event: Optional[asyncio.Event] = None, call_id: str = "unknown"):
+async def stream_audio_to_asterisk(writer, audio_pcm16_8k: bytes, cancel_event: Optional[asyncio.Event] = None, call_id: str = "unknown", vad_engine: Optional[Any] = None):
     """Adapter for static byte buffers (e.g. greeting). Chunks into 320B and paces."""
     q = asyncio.Queue()
     for i in range(0, len(audio_pcm16_8k), FRAME_SIZE_BYTES):
         q.put_nowait(audio_pcm16_8k[i:i+FRAME_SIZE_BYTES])
     q.put_nowait(None)
-    await stream_audio_queue_to_asterisk(writer, q, cancel_event, call_id)
+    await stream_audio_queue_to_asterisk(writer, q, cancel_event, call_id, vad_engine=vad_engine)
 
 # ── Call handler ──────────────────────────────────────────────────────────────
 
@@ -505,8 +506,50 @@ async def handle_audiosocket_connection(reader, writer):
                     echo_correlation_threshold=0.58,
                 )
 
+                last_interaction_time = time.time()
+                reprompt_count = 0
+
+                async def _inactivity_watchdog():
+                    nonlocal last_interaction_time, reprompt_count, current_turn_task, playback_cancel_event
+                    while True:
+                        try:
+                            await asyncio.sleep(1.0)
+                            if session.state == CallState.LISTENING and (current_turn_task is None or current_turn_task.done()):
+                                idle_time = time.time() - last_interaction_time
+                                if idle_time > 25.0 and reprompt_count == 0:
+                                    reprompt_count = 1
+                                    last_interaction_time = time.time()
+                                    logger.info("INACTIVITY_REPROMPT_TRIGGERED call_id=%s idle=%.1fs", call_id, idle_time)
+                                    async def _reprompt():
+                                        try:
+                                            session.state = CallState.AI_SPEAKING
+                                            reprompt_text = "Are you still there? Please let me know how I can assist you."
+                                            tts_res = await handler._run_tts(reprompt_text)
+                                            if tts_res and tts_res.audio_pcm16_8k and not playback_cancel_event.is_set():
+                                                await stream_audio_to_asterisk(writer, tts_res.audio_pcm16_8k, playback_cancel_event, call_id, vad_engine=vad_engine)
+                                        except Exception as ex:
+                                            logger.error("Reprompt error: %s", ex)
+                                        finally:
+                                            last_interaction_time = time.time()
+                                            if session.state == CallState.AI_SPEAKING:
+                                                session.state = CallState.LISTENING
+                                    current_turn_task = asyncio.create_task(_reprompt())
+                        except asyncio.CancelledError:
+                            break
+                        except Exception:
+                            pass
+
+                watchdog_task = asyncio.create_task(_inactivity_watchdog())
+
                 total_rx_bytes = 0
                 first_rx_frame = True
+
+                # Pre-seed initial greeting into session history so LLM never repeats introductions
+                greeting_text = "Hello! Great to connect with you. What is on your mind today?"
+                handler.conversation_history.append({
+                    "role": "assistant",
+                    "content": greeting_text
+                })
 
                 # Set SUPERFONE_STATUS=SUCCESS via AMI if on an Asterisk channel
                 if not channel_name.startswith("DIRECT/"):
@@ -555,6 +598,33 @@ async def handle_audiosocket_connection(reader, writer):
                             logger.info("AUDIO_RX_START call_id=%s frame_bytes=%d", call_id, len(payload))
                             first_rx_frame = False
 
+                            # Humanized Spoken Welcome Greeting on Call Connect
+                            async def _play_welcome_greeting(cancel_ev: asyncio.Event):
+                                nonlocal last_interaction_time, reprompt_count
+                                try:
+                                    greeting_text = "Hello! Great to connect with you. What is on your mind today?"
+                                    if not any(msg.get("content") == greeting_text for msg in session.conversation_history):
+                                        session.conversation_history.append({
+                                            "role": "assistant",
+                                            "content": greeting_text
+                                        })
+                                    tts_res = await handler._run_tts(greeting_text)
+                                    if tts_res and tts_res.audio_pcm16_8k and not cancel_ev.is_set():
+                                        session.state = CallState.AI_SPEAKING
+                                        await stream_audio_to_asterisk(writer, tts_res.audio_pcm16_8k, cancel_ev, call_id, vad_engine=vad_engine)
+                                        logger.info("GREETING_END call_id=%s", call_id)
+                                except asyncio.CancelledError:
+                                    logger.info("GREETING_CANCELLED (barge-in) call_id=%s", call_id)
+                                except Exception as ex:
+                                    logger.error("Error playing welcome greeting call_id=%s: %s", call_id, ex)
+                                finally:
+                                    last_interaction_time = time.time()
+                                    reprompt_count = 0
+                                    if session.state == CallState.AI_SPEAKING:
+                                        session.state = CallState.LISTENING
+
+                            current_turn_task = asyncio.create_task(_play_welcome_greeting(playback_cancel_event))
+
                         is_ai_speaking = (session.state == CallState.AI_SPEAKING)
 
                         # Suppress VAD during internal pipeline processing (STT/LLM/TTS)
@@ -598,13 +668,16 @@ async def handle_audiosocket_connection(reader, writer):
                                 "VAD_SPEECH_END call_id=%s audio_duration_ms=%.1f audio_bytes=%d trailing_silence_ms=400.0 peak_level=%d max_frame_rms=%.1f avg_rms=%.1f prob=%.2f",
                                 call_id, duration_ms, len(full_utterance), peak_level, max_frame_rms, rms_level, prob
                             )
-                            # Reject noise frames / microphone clicks below energy thresholds
-                            if peak_level < 2000 or (rms_level < 250.0 and max_frame_rms < 900.0):
-                                logger.info(
-                                    "call_id=%s Discarding quiet non-speech frame (peak=%d, max_frame_rms=%.1f, avg_rms=%.1f)",
+                            # Reject pure electrical noise / muted line clicks below sensitive telephony thresholds
+                            if peak_level < 300 or (rms_level < 40.0 and max_frame_rms < 120.0):
+                                logger.debug(
+                                    "call_id=%s Discarding line noise frame (peak=%d, max_frame_rms=%.1f, avg_rms=%.1f)",
                                     call_id, peak_level, max_frame_rms, rms_level
                                 )
                                 continue
+
+                            last_interaction_time = time.time()
+                            reprompt_count = 0
 
                             if current_turn_task and not current_turn_task.done():
                                 cancel_current_turn(reason="new turn starting")
@@ -612,6 +685,7 @@ async def handle_audiosocket_connection(reader, writer):
                             playback_cancel_event = asyncio.Event()
 
                             async def _run_turn(audio_data: bytes, cancel_ev: asyncio.Event):
+                                nonlocal last_interaction_time
                                 try:
                                     logger.info("AUDIO_DISPATCH_START call_id=%s bytes=%d", call_id, len(audio_data))
                                     await handler.handle_utterance_stream(
@@ -629,6 +703,7 @@ async def handle_audiosocket_connection(reader, writer):
                                 except Exception as e:
                                     logger.error("Unexpected error in turn task call_id=%s: %s", call_id, e, exc_info=True)
                                 finally:
+                                    last_interaction_time = time.time()
                                     if session.state in (CallState.AI_SPEAKING, CallState.PROCESSING_TTS, CallState.PROCESSING_LLM):
                                         session.state = CallState.LISTENING
 
@@ -677,10 +752,9 @@ async def main():
 
     try:
         await ami_client.connect()
-
+        logger.info("Asterisk AMI connected successfully.")
     except Exception as e:
-        logger.error("Failed to connect/authenticate with Asterisk AMI: %s", e)
-        sys.exit(1)
+        logger.warning("Asterisk AMI connection failed (%s). Continuing AudioSocket gateway in standalone mode.", e)
 
     logger.info(
         "Admission limit: MAX_CONCURRENT_CALLS=%d (process-local)", MAX_CONCURRENT_CALLS

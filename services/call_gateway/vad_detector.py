@@ -20,30 +20,47 @@ class BargeInState(enum.Enum):
     CONFIRMED_BARGE_IN = "CONFIRMED_BARGE_IN"
 
 
+from scipy.signal import butter, lfilter
+
+
+class AudioDSPProcessor:
+    """High-Pass Filtering (100Hz) & Adaptive Gain Control (AGC)."""
+    def __init__(self, sample_rate=8000, target_rms=3500.0, max_gain_db=14.0):
+        self.sample_rate = sample_rate
+        self.target_rms = target_rms
+        self.max_gain = 10.0 ** (max_gain_db / 20.0)
+        b, a = butter(2, 100.0 / (sample_rate / 2.0), btype='high')
+        self.b = b
+        self.a = a
+        self.zi = np.zeros(max(len(a), len(b)) - 1)
+
+    def process(self, samples_int16: np.ndarray) -> np.ndarray:
+        if len(samples_int16) == 0:
+            return samples_int16
+        samples_float = samples_int16.astype(np.float32)
+        filtered, self.zi = lfilter(self.b, self.a, samples_float, zi=self.zi)
+        current_rms = float(np.sqrt(np.mean(filtered**2)))
+        if 120.0 < current_rms < self.target_rms:
+            gain = min(self.max_gain, self.target_rms / current_rms)
+            filtered = filtered * gain
+        return np.clip(filtered, -32768.0, 32767.0).astype(np.int16)
+
+
 class SileroEndpointingEngine:
     """
-    Real-Time Stateful Neural VAD, Echo-Aware Gating & Noise-Tracked Endpointing Engine.
-    
-    Combines:
-      - Silero VAD (ONNX) neural voice probability
-      - Agent Playback Reference Ring Buffer & Cross-Correlation Echo Rejection
-      - Adaptive Noise Floor Tracker (ambient RMS tracking)
-      - 500ms pre-roll ring buffer (25 frames x 20ms)
-      - 60ms speech-start confirmation (3 consecutive speech frames)
-      - 400ms hangover trailing silence (20 consecutive non-speech frames)
-      - Multi-frame Barge-In Candidate/Confirmed State Machine (5 frames = 100ms non-echo confirmation)
+    Real-Time Stateful Neural VAD, DSP Filtered & Noise-Tracked Endpointing Engine.
     """
     def __init__(
         self,
-        speech_threshold: float = 0.45,
-        barge_in_threshold: float = 0.55,
+        speech_threshold: float = 0.50,
+        barge_in_threshold: float = 0.60,
         pre_roll_frames: int = 25,        # 500ms @ 20ms/frame ring buffer
-        confirm_frames_needed: int = 3,   # 60ms fast speech confirmation
+        confirm_frames_needed: int = 2,   # 40ms fast speech confirmation
         hangover_frames_needed: int = 20, # 400ms natural conversational clause endpointing
         barge_in_frames_needed: int = 5,  # 100ms robust barge-in confirmation
-        min_utterance_frames: int = 10,   # 200ms min utterance
+        min_utterance_frames: int = 8,    # 160ms min utterance
         max_utterance_frames: int = 750,  # 15.0s max
-        echo_correlation_threshold: float = 0.58,
+        echo_correlation_threshold: float = 0.55,
     ):
         self.vad_model = fv.get_vad_model()
         self.speech_threshold = speech_threshold
@@ -55,6 +72,7 @@ class SileroEndpointingEngine:
         self.min_utterance_frames = min_utterance_frames
         self.max_utterance_frames = max_utterance_frames
         self.echo_correlation_threshold = echo_correlation_threshold
+        self.dsp = AudioDSPProcessor()
 
         self.state = VADState.LISTENING
         self.barge_in_state = BargeInState.NORMAL_PLAYBACK
@@ -138,11 +156,16 @@ class SileroEndpointingEngine:
         if not frame_pcm16_8k or len(frame_pcm16_8k) < 320:
             return None, None, 0.0
 
+        # Convert to int16, process via DSP (High-pass + AGC), then store
+        samples_raw = np.frombuffer(frame_pcm16_8k, dtype=np.int16)
+        samples_dsp = self.dsp.process(samples_raw)
+        frame_pcm16_8k = samples_dsp.tobytes()
+
         # Always feed continuous pre-roll ring buffer (500ms history)
         self.pre_roll_buffer.append(frame_pcm16_8k)
 
         # Convert to float32 and compute frame RMS energy
-        samples_8k = np.frombuffer(frame_pcm16_8k, dtype=np.int16).astype(np.float32)
+        samples_8k = samples_dsp.astype(np.float32)
         frame_rms = float(np.sqrt(np.mean(samples_8k**2)))
         samples_norm = samples_8k / 32768.0
 
@@ -217,7 +240,7 @@ class SileroEndpointingEngine:
                 return None, None, prob
 
         # ── Case B: Caller is in normal LISTENING / IN_SPEECH state ───────────
-        is_speech = (prob >= self.speech_threshold) and (frame_rms >= max(80.0, self.noise_floor_rms * 1.2))
+        is_speech = (prob >= self.speech_threshold) and (frame_rms >= max(140.0, self.noise_floor_rms * 1.5))
 
         if self.state == VADState.LISTENING:
             if is_speech:

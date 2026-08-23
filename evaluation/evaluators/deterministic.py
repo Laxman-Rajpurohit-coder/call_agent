@@ -63,12 +63,23 @@ class DeterministicEvaluator:
             if not required_facts_passed:
                 failure_reasons.append(f"missing_required_facts: {missing_required}")
 
-            # 3. Audio Continuity & Underrun Checks
+            # 3. Audio Continuity & Word-Count-Aware Duration Checks
             audio_dur = execution_result.get("agent_audio_duration_s", 0)
-            audio_passed = audio_dur >= 1.5
+            word_count = len(agent_text.split()) if agent_text else 0
+
+            if word_count < 5:
+                # For short confirmations/openers (< 5 words), do not force a multi-second duration floor
+                audio_passed = (agent_audio_bytes > 0) or (audio_dur > 0)
+                checks["short_response"] = True
+                checks["duration_check"] = "informational_only"
+            else:
+                speech_rate = (word_count / audio_dur) if audio_dur > 0 else 0.0
+                audio_passed = (audio_dur >= 0.8) and (speech_rate <= 5.0)
+                checks["speech_rate_wps"] = round(speech_rate, 2)
+
             checks["agent_audio_generated"] = audio_passed
             if not audio_passed:
-                failure_reasons.append(f"audio_truncated_or_empty: duration={audio_dur}s")
+                failure_reasons.append(f"audio_truncated_or_empty: duration={audio_dur}s, words={word_count}")
 
             checks["zero_playback_underruns"] = True
             checks["continuity_score_pass"] = True

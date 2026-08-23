@@ -1,0 +1,26 @@
+{
+  "version": "v0.1.2",
+  "name": "v0.1.2-echo-noise-frozen",
+  "threshold_status": "frozen_before_heldout_test",
+  "timestamp": "2026-08-21T09:15:00Z",
+  "vad_parameters": {
+    "speech_threshold": 0.45,
+    "barge_in_threshold": 0.55,
+    "echo_correlation_threshold": 0.58,
+    "noise_rms_multiplier": 1.6,
+    "minimum_rms": 160.0,
+    "candidate_frames": 5,
+    "frame_ms": 20,
+    "hangover_frames": 20,
+    "preroll_frames": 25
+  },
+  "acceptance_gates": {
+    "false_barge_in_rate_max": 0.02,
+    "self_barge_in_rate_max": 0.0,
+    "mid_sentence_false_cut_max": 0.01,
+    "noise_continuation_rate_min": 0.98,
+    "true_barge_in_recall_min": 0.90,
+    "quiet_speech_recall_min": 0.90,
+    "preroll_completeness_min": 0.90
+  }
+}

@@ -1,0 +1,14 @@
+id: heldout_echo_lowgain_003
+suite: held_out
+category: agent_echo
+language: en
+transport: direct_audiosocket
+description: "Low-gain room boundary echo during hours"
+
+turns:
+  - audio_file: "evaluation/audio/held_out/heldout_echo_lowgain_003.wav"
+
+required_facts: []
+forbidden_facts: []
+
+expected_tools: []

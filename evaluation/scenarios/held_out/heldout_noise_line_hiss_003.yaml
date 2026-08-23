@@ -1,0 +1,14 @@
+id: heldout_noise_line_hiss_003
+suite: held_out
+category: noise_only
+language: en
+transport: direct_audiosocket
+description: "Telephony line hiss noise (RMS=280)"
+
+turns:
+  - audio_file: "evaluation/audio/held_out/heldout_noise_line_hiss_003.wav"
+
+required_facts: []
+forbidden_facts: []
+
+expected_tools: []

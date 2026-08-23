@@ -1,0 +1,14 @@
+id: heldout_echo_speaker_001
+suite: held_out
+category: agent_echo
+language: en
+transport: direct_audiosocket
+description: "Realistic phone speaker acoustic echo (filtered + reverberation) during address"
+
+turns:
+  - audio_file: "evaluation/audio/held_out/heldout_echo_speaker_001.wav"
+
+required_facts: []
+forbidden_facts: []
+
+expected_tools: []
