@@ -1,0 +1,60 @@
+cases:
+  - id: num_ent_001
+    text: "The foundation is named Malisaini Samaj Seva Foundation."
+    category: names_entities
+    language: en
+    expected_entities: ["Malisaini Samaj Seva Foundation"]
+
+  - id: num_ent_002
+    text: "Our physical address is Gandhi Pura, Balotra, Barmer District, Rajasthan, PIN code 344022."
+    category: names_entities
+    language: en
+    expected_entities: ["Gandhi Pura", "Balotra", "Barmer", "Rajasthan", "344022"]
+
+  - id: num_ent_003
+    text: "The managing directors are Sanjay Gahlot and Paras Mal Gahlot."
+    category: names_entities
+    language: en
+    expected_entities: ["Sanjay Gahlot", "Paras Mal Gahlot"]
+
+  - id: num_ent_004
+    text: "Our office is open from 9:00 AM to 5:00 PM, Monday through Saturday."
+    category: numbers_times
+    language: en
+    expected_entities: ["9:00 AM", "5:00 PM", "Monday", "Saturday"]
+
+  - id: num_ent_005
+    text: "Your volunteer registration ID is 84920."
+    category: numbers_times
+    language: en
+    expected_entities: ["84920"]
+
+  - id: num_ent_006
+    text: "You can reach our main helpline at 9876543210."
+    category: numbers_times
+    language: en
+    expected_entities: ["9876543210"]
+
+  - id: num_ent_007
+    text: "A receipt for rupees 5000 has been sent to your registered number."
+    category: numbers_times
+    language: en
+    expected_entities: ["5000"]
+
+  - id: num_ent_008
+    text: "The next community medical camp is scheduled for October 15th, 2026."
+    category: numbers_times
+    language: en
+    expected_entities: ["October 15th", "2026"]
+
+  - id: num_ent_009
+    text: "We provided financial scholarships to 150 local students this academic year."
+    category: numbers_times
+    language: en
+    expected_entities: ["150"]
+
+  - id: num_ent_010
+    text: "Our contact number is 9876543210 and office PIN code is 344022."
+    category: numbers_times
+    language: en
+    expected_entities: ["9876543210", "344022"]

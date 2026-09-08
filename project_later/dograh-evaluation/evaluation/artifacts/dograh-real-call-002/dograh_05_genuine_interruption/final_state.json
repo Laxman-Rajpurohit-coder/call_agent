@@ -1,0 +1,8 @@
+{
+  "scenario_id": "dograh_05_genuine_interruption",
+  "session_id": "dograh-sess-1684e0bc58",
+  "system_under_test": "dograh",
+  "passed": true,
+  "audio_duration_s": 6.43,
+  "tool_status": "SUCCESS"
+}

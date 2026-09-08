@@ -1,0 +1,27 @@
+{
+  "invocations": [
+    {
+      "tool": "tag_customer",
+      "status": "SUCCESS",
+      "result": {
+        "status": "SUCCESS",
+        "tag_id": 5,
+        "customer_id": "cust_test_001",
+        "tag": "urgent",
+        "reason": "Automated integration test"
+      }
+    },
+    {
+      "tool": "save_call_note",
+      "status": "SUCCESS",
+      "result": {
+        "status": "SUCCESS",
+        "note_id": 5,
+        "call_id": "single-call-1787375076",
+        "summary": "Customer inquiry regarding Balotra branch",
+        "action_items": "Send address SMS"
+      }
+    }
+  ],
+  "db_verified": true
+}

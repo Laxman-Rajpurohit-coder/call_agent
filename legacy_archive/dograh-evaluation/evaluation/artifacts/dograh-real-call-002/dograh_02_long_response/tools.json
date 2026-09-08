@@ -1,0 +1,11 @@
+{
+  "session_id": "dograh-sess-942b38fa91",
+  "tool_invocation": {
+    "status": "SUCCESS",
+    "tag_id": 16,
+    "customer_id": "cust_001",
+    "tag": "general_inquiry",
+    "reason": "Foundation address requested"
+  },
+  "db_persisted": true
+}

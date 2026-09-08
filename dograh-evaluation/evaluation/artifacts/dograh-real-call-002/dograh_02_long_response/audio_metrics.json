@@ -1,0 +1,12 @@
+{
+  "tts_generation_duration_ms": 1552.23,
+  "tts_audio_duration_ms": 5363.88,
+  "playback_audio_duration_ms": 5363.88,
+  "realtime_factor": 0.2894,
+  "queue_underflow_count": 0,
+  "unexpected_gap_count": 0,
+  "missing_chunks": 0,
+  "duplicate_chunks": 0,
+  "mid_word_cuts": 0,
+  "is_sustainable_realtime": true
+}

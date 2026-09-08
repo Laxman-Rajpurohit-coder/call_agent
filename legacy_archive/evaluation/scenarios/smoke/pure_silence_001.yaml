@@ -1,0 +1,27 @@
+id: pure_silence_001
+suite: smoke
+language: en
+category: noise_rejection
+transport: direct_audiosocket
+caller_goal: noise_gate_test
+description: "Pure digital silence (2.0s)"
+
+turns:
+  - audio_file: "evaluation/audio/synthetic/pure_silence_001.wav"
+
+required_facts: []
+
+forbidden_facts:
+  - "I don't"
+  - "I know"
+  - "I love"
+  - "Thank you"
+  - "Gandhi Pura"
+  - "Balotra"
+
+expected_tools: []
+
+success_conditions:
+  - noise_rejected_silently
+  - zero_hallucinations
+  - zero_agent_playback

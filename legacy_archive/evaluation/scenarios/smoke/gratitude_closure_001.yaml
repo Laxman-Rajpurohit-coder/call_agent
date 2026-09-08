@@ -1,0 +1,25 @@
+allowed_facts:
+- Gandhi Pura
+- Balotra
+- Barmer
+- Rajasthan
+caller_goal: gratitude_closure
+category: normal
+description: 'Batch 1 Scenario: Thank you so much for the information.'
+expected_tools: []
+forbidden_facts:
+- angry
+- error
+id: gratitude_closure_001
+language: en
+required_facts:
+- welcome
+success_conditions:
+- stt_not_empty
+- required_facts_present
+- forbidden_facts_absent
+- agent_audio_generated
+suite: smoke
+transport: direct_audiosocket
+turns:
+- audio_file: evaluation/audio/synthetic/gratitude_closure_001.wav

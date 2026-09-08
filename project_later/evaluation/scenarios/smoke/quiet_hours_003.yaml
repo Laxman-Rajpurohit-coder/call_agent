@@ -1,0 +1,21 @@
+caller_goal: quiet_speech_test
+category: quiet_speech
+description: 'Quiet Speech Scenario: What are your opening hours?'
+expected_tools: []
+forbidden_facts:
+- closed
+id: quiet_hours_003
+language: en
+required_facts:
+- 9:00 AM
+- 5:00 PM
+success_conditions:
+- stt_not_empty
+- quiet_speech_accepted
+- required_facts_present
+- forbidden_facts_absent
+- agent_audio_generated
+suite: smoke
+transport: direct_audiosocket
+turns:
+- audio_file: evaluation/audio/synthetic/quiet_hours_003.wav

@@ -1,0 +1,16 @@
+{
+  "scenario_id": "comp_interrupt_04",
+  "passed": true,
+  "checks": {
+    "stt_not_empty": true,
+    "required_facts_present": true,
+    "speech_rate_wps": 2.38,
+    "agent_audio_generated": true,
+    "zero_playback_underruns": true,
+    "continuity_score_pass": true
+  },
+  "failure_reasons": [],
+  "caller_transcript": "Actually, tell me the address.",
+  "agent_response": "The address is Gandhi Pura, Balotra, Barmer District, Rajasthan (PIN 344022).",
+  "agent_audio_duration_s": 4.62
+}

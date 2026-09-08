@@ -1,0 +1,17 @@
+id: noise_plus_quiet_speech_005
+suite: barge_in_noise
+category: quiet_speech_under_noise
+language: en
+transport: direct_audiosocket
+description: Quiet caller speech under ambient background noise - must be accurately
+  recognized
+turns:
+- audio_file: evaluation/audio/synthetic/quiet_hello_001.wav
+required_facts:
+- assist
+expected:
+  stt_not_empty: true
+  required_facts_present: true
+success_conditions:
+- stt_not_empty
+- required_facts_present

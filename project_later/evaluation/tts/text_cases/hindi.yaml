@@ -1,0 +1,90 @@
+cases:
+  - id: hin_care_001
+    text: "आपका स्वागत है। मैं आपकी कैसे सहायता कर सकती हूं?"
+    category: hindi_care
+    language: hi
+    expected_entities: []
+
+  - id: hin_care_002
+    text: "मालीसैनी समाज सेवा फाउंडेशन में आपका स्वागत है।"
+    category: hindi_care
+    language: hi
+    expected_entities: ["मालीसैनी समाज सेवा फाउंडेशन"]
+
+  - id: hin_care_003
+    text: "हमारा कार्यालय गांधी पुरा, बालोतरा में स्थित है।"
+    category: hindi_care
+    language: hi
+    expected_entities: ["गांधी पुरा", "बालोतरा"]
+
+  - id: hin_care_004
+    text: "कार्यालय का समय सुबह 9:00 बजे से शाम 5:00 बजे तक है।"
+    category: hindi_care
+    language: hi
+    expected_entities: ["9:00", "5:00"]
+
+  - id: hin_care_005
+    text: "फाउंडेशन के निदेशक संजय गहलोत और पारस मल गहलोत हैं।"
+    category: hindi_care
+    language: hi
+    expected_entities: ["संजय गहलोत", "पारस मल गहलोत"]
+
+  - id: hin_care_006
+    text: "हम शिक्षा सहायता और स्वास्थ्य सेवाएं प्रदान करते हैं।"
+    category: hindi_care
+    language: hi
+    expected_entities: ["शिक्षा सहायता", "स्वास्थ्य सेवाएं"]
+
+  - id: hin_care_007
+    text: "दान करने के लिए आप हमारी वेबसाइट पर जा सकते हैं।"
+    category: hindi_care
+    language: hi
+    expected_entities: ["वेबसाइट"]
+
+  - id: hin_care_008
+    text: "स्वयंसेवक बनने के लिए कृपया अपना नाम और फोन नंबर दर्ज कराएं।"
+    category: hindi_care
+    language: hi
+    expected_entities: []
+
+  - id: hin_care_009
+    text: "हमारे प्रतिनिधि सोमवार से शनिवार तक आपकी सेवा में उपलब्ध हैं।"
+    category: hindi_care
+    language: hi
+    expected_entities: ["सोमवार", "शनिवार"]
+
+  - id: hin_care_010
+    text: "क्या मैं आपकी किसी अन्य जानकारी में मदद कर सकती हूं?"
+    category: hindi_care
+    language: hi
+    expected_entities: []
+
+  - id: hin_care_011
+    text: "छात्रों के लिए छात्रवृत्ति योजना हर वर्ष उपलब्ध कराई जाती है।"
+    category: hindi_care
+    language: hi
+    expected_entities: ["छात्रवृत्ति"]
+
+  - id: hin_care_012
+    text: "मुफ्त चिकित्सा शिविर हर महीने आयोजित किए जाते हैं।"
+    category: hindi_care
+    language: hi
+    expected_entities: ["चिकित्सा शिविर"]
+
+  - id: hin_care_013
+    text: "कृपया एक क्षण रुकिए, मैं आपकी जानकारी की जांच कर रही हूं।"
+    category: hindi_care
+    language: hi
+    expected_entities: []
+
+  - id: hin_care_014
+    text: "कॉल करने के लिए आपका बहुत-बहुत धन्यवाद।"
+    category: hindi_care
+    language: hi
+    expected_entities: []
+
+  - id: hin_care_015
+    text: "आपका दिन शुभ हो और सेवा का अवसर देने के लिए धन्यवाद।"
+    category: hindi_care
+    language: hi
+    expected_entities: []

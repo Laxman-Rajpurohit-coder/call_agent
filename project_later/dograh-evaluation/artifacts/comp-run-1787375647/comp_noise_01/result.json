@@ -1,0 +1,13 @@
+{
+  "scenario_id": "comp_noise_01",
+  "passed": true,
+  "checks": {
+    "zero_hallucinations": true,
+    "silent_rejection": true,
+    "no_false_barge_in": true
+  },
+  "failure_reasons": [],
+  "caller_transcript": "",
+  "agent_response": "",
+  "agent_audio_duration_s": 0.0
+}

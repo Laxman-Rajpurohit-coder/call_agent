@@ -1,0 +1,8 @@
+{"trace_id": "eval-comp-run-1787375647-comp_interrupt_01", "timestamp_ms": 1787375729769, "event": "call_started", "scenario_id": "comp_interrupt_01", "call_uuid": "66938a8e-41d5-4c04-8930-7f6d63756d62"}
+{"trace_id": "eval-comp-run-1787375647-comp_interrupt_01", "timestamp_ms": 1787375729774, "event": "audiosocket_connected", "host": "127.0.0.1", "port": 9092}
+{"trace_id": "eval-comp-run-1787375647-comp_interrupt_01", "timestamp_ms": 1787375729776, "event": "caller_speech_started", "frame_count": 113}
+{"trace_id": "eval-comp-run-1787375647-comp_interrupt_01", "timestamp_ms": 1787375733289, "event": "caller_speech_ended", "duration_s": 2.26}
+{"trace_id": "eval-comp-run-1787375647-comp_interrupt_01", "timestamp_ms": 1787375737307, "event": "agent_playback_started", "caller_speech_end_to_playback_start_ms": 4019, "call_start_to_playback_start_ms": 7535}
+{"trace_id": "eval-comp-run-1787375647-comp_interrupt_01", "timestamp_ms": 1787375742876, "event": "agent_playback_completed", "frames_received": 279, "total_duration_s": 5.58}
+{"trace_id": "eval-comp-run-1787375647-comp_interrupt_01", "timestamp_ms": 1787375742877, "event": "call_ended", "duration_ms": 13104}
+{"trace_id": "eval-comp-run-1787375647-comp_interrupt_01", "timestamp_ms": 1787375742986, "event": "stt_result", "text": "Actually, tell me the address.", "confidence": 0.0}

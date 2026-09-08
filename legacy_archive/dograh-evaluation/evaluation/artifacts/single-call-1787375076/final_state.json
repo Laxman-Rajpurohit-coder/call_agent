@@ -1,0 +1,13 @@
+{
+  "system_under_test": "dograh_evaluation_runtime",
+  "voice_backend": "local",
+  "stt_backend": "local",
+  "llm_backend": "local",
+  "tts_backend": "local",
+  "telephony": "audiosocket_asterisk",
+  "run_id": "single-call-1787375076",
+  "call_passed": true,
+  "caller_transcript": "No.",
+  "agent_response": "Understood. How may I assist you further?",
+  "total_latency_ms": 8126.87
+}

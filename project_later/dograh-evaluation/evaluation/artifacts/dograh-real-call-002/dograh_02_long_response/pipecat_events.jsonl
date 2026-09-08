@@ -1,0 +1,3 @@
+{"timestamp_ms": 1787378166000, "event": "pipeline_started", "session_id": "dograh-sess-942b38fa91"}
+{"timestamp_ms": 1787378166020, "event": "stt_input_frame", "text": "Hello, good morning."}
+{"timestamp_ms": 1787378167567, "event": "tool_call_completed", "tool_result": {"status": "SUCCESS", "tag_id": 16, "customer_id": "cust_001", "tag": "general_inquiry", "reason": "Foundation address requested"}}

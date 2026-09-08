@@ -1,0 +1,13 @@
+{
+  "session_id": "hindi-call-001",
+  "language": "hi_IN",
+  "caller_transcript": "बालोतरा ऑफिस का पता क्या है?",
+  "agent_response": "हमारा बालोतरा कार्यालय गांधी पुरा, बाड़मेर जिला, राजस्थान में स्थित है। यह सोमवार से शनिवार सुबह 9:00 बजे से शाम 5:00 बजे तक खुला रहता है।",
+  "audio_duration_s": 11.79,
+  "tts_synthesis_ms": 1329.22,
+  "realtime_factor": 0.1127,
+  "crm_tool_status": "SUCCESS",
+  "database_persisted": true,
+  "clipping_samples": 0,
+  "audio_file": "hindi_call_001.wav"
+}

@@ -1,0 +1,3 @@
+{"timestamp_ms": 1787378168703, "event": "pipeline_started", "session_id": "dograh-sess-1684e0bc58"}
+{"timestamp_ms": 1787378168723, "event": "stt_input_frame", "text": "Actually, tell me the address."}
+{"timestamp_ms": 1787378169863, "event": "tool_call_completed", "tool_result": {"status": "SUCCESS", "tag_id": 17, "customer_id": "cust_001", "tag": "urgent", "reason": "Interruption occurred - priority tag"}}

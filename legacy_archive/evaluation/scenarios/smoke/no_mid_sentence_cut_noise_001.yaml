@@ -1,0 +1,38 @@
+id: no_mid_sentence_cut_noise_001
+suite: smoke
+language: en
+category: noise_rejection
+transport: direct_audiosocket
+caller_goal: breath_noise_during_opener_regression
+description: "Verify surrounding breath and room noise during agent opener does not cause false barge-in or mid-sentence cut"
+
+turns:
+  - audio_file: "evaluation/audio/synthetic/mic_breath_002.wav"
+
+input:
+  trigger: breath_and_room_noise
+  caller_interruption: null
+
+expected:
+  playback_completed: true
+  barge_in_detected: false
+  false_barge_in: false
+  mid_sentence_cut: false
+
+required_facts: []
+forbidden_facts: []
+
+audio_gates:
+  max_unexpected_gap_ms: 250
+  max_queue_underflow_count: 0
+  max_duplicate_chunk_count: 0
+  max_mid_sentence_cut_count: 0
+
+prosody_gates:
+  max_pitch_reset_at_boundary: 0
+  max_internal_gap_ms: 250
+
+expected_tools: []
+
+success_conditions:
+  - silent_rejection

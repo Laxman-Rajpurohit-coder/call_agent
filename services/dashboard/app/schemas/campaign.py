@@ -1,0 +1,36 @@
+from typing import Optional, List, Dict, Any
+from datetime import datetime
+from pydantic import BaseModel, ConfigDict
+
+class CampaignBase(BaseModel):
+    name: str
+    description: Optional[str] = None
+    type: str = "SCRIPT" # SCRIPT, AI, HYBRID
+    script_content: Optional[str] = None
+    voice_model: str = "hi_pratham"
+    max_concurrency: int = 5
+    calls_per_minute: int = 20
+    max_retries: int = 2
+
+class CampaignCreate(CampaignBase):
+    contact_ids: Optional[List[str]] = []
+
+class CampaignResponse(CampaignBase):
+    id: str
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+class CampaignProgress(BaseModel):
+    campaign_id: str
+    total_contacts: int
+    pending: int
+    queued: int
+    calling: int
+    answered: int
+    completed: int
+    no_answer: int
+    failed: int
+    progress_percentage: float

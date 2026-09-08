@@ -1,0 +1,11 @@
+{
+  "system_under_test": "dograh",
+  "dograh_version": "v1.0.0-oss",
+  "dograh_container_id": "dograh-repo-postgres-1,dograh-repo-redis-1,minio",
+  "dograh_session_id": "dograh-session-001",
+  "pipecat_pipeline": true,
+  "stt_backend": "local",
+  "llm_backend": "local",
+  "tts_backend": "local",
+  "telephony": "asterisk"
+}

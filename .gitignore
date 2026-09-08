@@ -7,6 +7,7 @@ __pycache__/
 *.mp3
 *.gguf
 *.onnx
+.env
 call_gateway.log
 MicroSIP-3.22.12/
 piper/
@@ -28,3 +29,4 @@ scratch/
 !evaluation/audio/reference/**/*.wav
 !evaluation/audio/synthetic/
 !evaluation/audio/synthetic/**/*.wav
+echo "legacy_archive/models/whisper_base/" >> .gitignore

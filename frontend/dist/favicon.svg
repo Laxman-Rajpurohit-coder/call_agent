@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <defs>
+    <linearGradient id="superfone-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4f46e5" />
+      <stop offset="100%" stop-color="#6366f1" />
+    </linearGradient>
+  </defs>
+  <rect width="100" height="100" rx="24" fill="url(#superfone-grad)" />
+  <path d="M32 30 C32 30 42 26 48 34 L52 42 C54 46 52 50 48 52 L44 54 C48 64 56 72 66 76 L68 72 C70 68 74 66 78 68 L86 72 C94 78 90 88 90 88 C90 88 66 94 36 64 C6 34 32 30 32 30 Z" fill="#ffffff" transform="translate(-10, -5) scale(0.95)" />
+</svg>

@@ -1,0 +1,14 @@
+id: heldout_quiet_speech_snr10_001
+suite: held_out
+category: quiet_speech_under_noise
+language: en
+transport: direct_audiosocket
+description: "Quiet caller asking for Balotra address at +10dB SNR over AC noise"
+
+turns:
+  - audio_file: "evaluation/audio/held_out/heldout_quiet_speech_snr10_001.wav"
+
+required_facts: ['Gandhi Pura', 'Balotra']
+forbidden_facts: []
+
+expected_tools: []

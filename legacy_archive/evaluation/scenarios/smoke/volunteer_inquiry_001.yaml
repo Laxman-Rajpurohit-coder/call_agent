@@ -1,0 +1,31 @@
+id: volunteer_inquiry_001
+suite: smoke
+language: en
+category: normal
+transport: direct_audiosocket
+caller_goal: volunteer_inquiry
+description: "Batch 1 Scenario: I would like to volunteer and help the foundation."
+
+turns:
+  - audio_file: "evaluation/audio/synthetic/volunteer_inquiry_001.wav"
+
+allowed_facts:
+  - "Gandhi Pura"
+  - "Balotra"
+  - "Barmer"
+  - "Rajasthan"
+
+required_facts:
+  - "volunteer"
+  - "welcome"
+
+forbidden_facts:
+  - "no volunteers needed"
+
+expected_tools: []
+
+success_conditions:
+  - stt_not_empty
+  - required_facts_present
+  - forbidden_facts_absent
+  - agent_audio_generated

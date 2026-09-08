@@ -16,22 +16,32 @@ ABBREVIATIONS = {
     'approx.', 'no.', 'st.', 'pin.', 'dist.', 'raj.', 'co.', 'ltd.', 'inc.'
 }
 
-def extract_sentences(buffer: str, min_words: int = 4):
+OPENERS = {'certainly', 'sure', 'yes', 'no', 'hello', 'namaste', 'नमस्ते', 'बिल्कुल', 'जी', 'good', 'धन्यवाद'}
+
+def extract_sentences(buffer: str, min_words: int = 3):
     sentences = []
-    pattern = re.compile(r'([.?!]+(?:\s+|\n+))')
+    # Split ONLY on terminal punctuation (. ? ! ।) followed by whitespace or end-of-string.
+    # Never split on newlines, colons, or commas which chop spoken speech into broken clauses.
+    pattern = re.compile(r'([.?!।]+(?:\s+|$))')
     last_idx = 0
     for match in pattern.finditer(buffer):
         end_idx = match.end()
         candidate = buffer[last_idx:end_idx].strip()
         tokens = candidate.split()
         if tokens:
-            last_word = tokens[-1].lower().rstrip('?!')
-            if last_word in ABBREVIATIONS or re.search(r'\d+\.\s*$', candidate) or re.search(r'\b[A-Za-z]\.\s*$', candidate):
+            last_word = tokens[-1].lower().rstrip('?!,;:।—')
+            # Protect abbreviations, initials, isolated digits, or colons
+            if (last_word in ABBREVIATIONS or 
+                re.search(r'\d+\.\s*$', candidate) or 
+                re.search(r'\b[A-Za-z]\.\s*$', candidate) or
+                re.search(r'[\d:,]\s*$', candidate)):
                 continue
-            # Keep micro-openers (< min_words) attached to the subsequent clause for natural TTS flow
+            # Conversational openers (< min_words) can be yielded early for instant auditory acknowledgment
             if len(tokens) < min_words:
-                continue
-        if len(candidate) < 5 and not any(c in candidate for c in ".?!"):
+                first_clean = tokens[0].lower().rstrip('?!,;:।')
+                if not (len(tokens) >= 2 and first_clean in OPENERS):
+                    continue
+        if len(candidate) < 3:
             continue
         sentences.append(candidate)
         last_idx = end_idx
@@ -64,7 +74,7 @@ class LLMServer:
 
     async def start(self):
         print(f"Loading LLM model once from {LLM_MODEL}...")
-        self.llm = Llama(model_path=LLM_MODEL, n_ctx=1024, n_threads=8, n_batch=512, verbose=False)
+        self.llm = Llama(model_path=LLM_MODEL, n_ctx=2048, n_threads=8, n_batch=512, verbose=False)
         self.lock = asyncio.Lock()
         # Warmup pass to pre-allocate KV cache and JIT execution structures
         self.llm.create_chat_completion(
@@ -77,11 +87,12 @@ class LLMServer:
         app = web.Application()
         app.router.add_post('/llm', self.handle_llm)
         app.router.add_post('/llm/stream', self.handle_llm_stream)
+        app.router.add_post('/v1/chat/completions', self.handle_openai_chat)
         runner = web.AppRunner(app)
         await runner.setup()
         site = web.TCPSite(runner, self.host, self.port)
         await site.start()
-        print(f"LLM Server listening on http://{self.host}:{self.port}/llm and /llm/stream")
+        print(f"LLM Server listening on http://{self.host}:{self.port}/llm and /v1/chat/completions")
 
     async def handle_llm_stream(self, request):
         t_handler_start = time.perf_counter()
@@ -96,21 +107,17 @@ class LLMServer:
 
         messages = [
             {"role": "system", "content": (
-                "You are the warm, helpful voice receptionist for Malisaini Samaj Seva Foundation. "
-                "Factual Details: "
-                "- Location: Gandhi Pura, Balotra, Barmer District, Rajasthan (PIN 344022). "
-                "- Directors: Sanjay Gahlot and Paras Mal Gahlot. "
-                "- Office Hours: 9:00 AM to 5:00 PM, Monday through Saturday. "
-                "- Programs: Educational support for students, community health services, social welfare, and family assistance. "
-                "Conversational Rules: "
-                "- Speak in natural, spoken English (or Hindi if spoken to in Hindi) using conversational contractions. "
-                "- Answer in maximum 1 to 2 short, direct sentences. "
-                "- Never use bullet points, asterisks, markdown, or URLs. "
-                "- Never say you are an AI model or that you lack a physical location. Answer factually as the foundation receptionist."
+                "You are Pratham, a warm, genuine, and friendly AI representative of Mali Saini Samaj Seva Foundation (an NGO).\n"
+                "GOAL & RESPONSIBILITIES:\n"
+                "1. Donation Assistance: Help callers with donation inquiries, explain donation options (UPI, Netbanking, Cards), and confirm 80G tax exemption receipts.\n"
+                "2. Conversational Style: Speak authentically and warmly like a friendly coordinator on a phone call. Keep replies to 1-2 natural spoken sentences (around 12-20 words, under 3 seconds of speech).\n"
+                "3. Language Policy: Match the caller's language. If the caller speaks Hindi or Hinglish, respond strictly in warm conversational Hindi using Devanagari script (e.g. 'जी बिल्कुल, आप UPI या नेटबैंकिंग से डोनेशन दे सकते हैं और 80G टैक्स रसीद भी मिलेगी।'). If the caller speaks English, respond in clear warm English.\n"
+                "4. Human Handoff: If the caller explicitly asks to speak to a person or manager, politely agree and say 'जी, मैं तुरंत आपकी कॉल हमारे मैनेजर से कनेक्ट कर रहा हूँ।'\n"
+                "5. Direct & Helpful: Never say robotic phrases like 'How can I assist you today?' or repeat intro greetings."
             )}
         ]
-        # Keep recent 4 turns to keep prompt evaluation sub-200ms
-        for msg in conversation_history[-4:]:
+        # Keep last 6 turns of history for conversation continuity
+        for msg in conversation_history[-6:]:
             messages.append({"role": msg["role"], "content": msg["content"]})
         messages.append({"role": "user", "content": transcript})
 
@@ -129,7 +136,9 @@ class LLMServer:
             try:
                 stream = self.llm.create_chat_completion(
                     messages=messages,
-                    max_tokens=150,
+                    max_tokens=35,
+                    temperature=0.35,
+                    repeat_penalty=1.15,
                     stream=True,
                 )
                 for chunk in stream:
@@ -233,20 +242,15 @@ class LLMServer:
 
         messages = [
             {"role": "system", "content": (
-                "You are the warm, helpful voice receptionist for Malisaini Samaj Seva Foundation. "
-                "Factual Details: "
-                "- Location: Gandhi Pura, Balotra, Barmer District, Rajasthan (PIN 344022). "
-                "- Directors: Sanjay Gahlot and Paras Mal Gahlot. "
-                "- Office Hours: 9:00 AM to 5:00 PM, Monday through Saturday. "
-                "- Programs: Educational support for students, community health services, social welfare, and family assistance. "
-                "Conversational Rules: "
-                "- Speak in natural, spoken English (or Hindi if spoken to in Hindi) using conversational contractions. "
-                "- Answer in maximum 1 to 2 short, direct sentences. "
-                "- Never use bullet points, asterisks, markdown, or URLs. "
-                "- Never say you are an AI model or that you lack a physical location. Answer factually as the foundation receptionist."
+                "You are a warm, genuine, and friendly human conversational companion on a live phone call.\n"
+                "CONVERSATION GUIDELINES:\n"
+                "1. Warm & Natural: Speak authentically like a real friend on a phone call. Use natural spoken conversational markers when appropriate (e.g. 'Oh absolutely!', 'Definitely,', 'Honestly, I think...', 'That sounds wonderful!', 'अरे वाह,', 'हाँ बिल्कुल,', 'सच में,', 'बहुत बढ़िया!').\n"
+                "2. Pacing: Keep your reply strictly to ONE natural, complete sentence (around 12 to 18 words, under 2.5 seconds of speech). Never ramble, and never cut off into broken fragments.\n"
+                "3. Language Matching: Detect the user's language (Hindi or English or Hinglish). If Hindi/Hinglish, reply strictly in warm, conversational Hindi using Devanagari script (e.g. 'अरे वाह! आपसे बात करके बहुत खुशी हुई, धन्यवाद!'). Never output robotic refusal phrases.\n"
+                "4. Direct Answer: Answer the caller's thought directly. Never say robotic phrases like 'How can I assist you today?' or repeat introductions."
             )}
         ]
-        for msg in conversation_history:
+        for msg in conversation_history[-6:]:
             messages.append({"role": msg["role"], "content": msg["content"]})
         messages.append({"role": "user", "content": transcript})
 
@@ -262,7 +266,9 @@ class LLMServer:
             t_infer = time.perf_counter()
             stream = self.llm.create_chat_completion(
                 messages=messages,
-                max_tokens=150,
+                max_tokens=35,
+                temperature=0.35,
+                repeat_penalty=1.15,
                 stream=True,
             )
             reply_parts = []
@@ -301,6 +307,43 @@ class LLMServer:
             "first_token_ms": round(first_token_ms_holder[0] or latency_ms, 3),
             "lock_wait_ms": round(lock_wait_ms, 3),
             "inference_ms": round(inference_ms, 3),
+        })
+
+    async def handle_openai_chat(self, request):
+        t_handler_start = time.perf_counter()
+        data = await request.json()
+        messages = data.get("messages", [])
+
+        if not messages:
+            messages = [{"role": "user", "content": "Hello"}]
+
+        loop = asyncio.get_running_loop()
+
+        def run_inference():
+            t0 = time.perf_counter()
+            resp = self.llm.create_chat_completion(
+                messages=messages,
+                max_tokens=60,
+                temperature=0.7
+            )
+            dur = (time.perf_counter() - t0) * 1000.0
+            content = resp["choices"][0]["message"]["content"].strip()
+            return content, dur
+
+        async with self.lock:
+            reply_content, inference_ms = await loop.run_in_executor(None, run_inference)
+
+        latency_ms = (time.perf_counter() - t_handler_start) * 1000.0
+
+        return web.json_response({
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "content": reply_content
+                }
+            }],
+            "latency_ms": round(latency_ms, 2),
+            "inference_ms": round(inference_ms, 2)
         })
 
 

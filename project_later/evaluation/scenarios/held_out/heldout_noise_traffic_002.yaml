@@ -1,0 +1,14 @@
+id: heldout_noise_traffic_002
+suite: held_out
+category: noise_only
+language: en
+transport: direct_audiosocket
+description: "Low-frequency roadside traffic rumble (RMS=380)"
+
+turns:
+  - audio_file: "evaluation/audio/held_out/heldout_noise_traffic_002.wav"
+
+required_facts: []
+forbidden_facts: []
+
+expected_tools: []

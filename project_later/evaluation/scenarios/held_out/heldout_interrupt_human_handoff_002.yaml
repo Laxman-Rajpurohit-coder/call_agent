@@ -1,0 +1,14 @@
+id: heldout_interrupt_human_handoff_002
+suite: held_out
+category: genuine_barge_in
+language: en
+transport: direct_audiosocket
+description: "Real caller interrupts with 'Can I speak with a coordinator?'"
+
+turns:
+  - audio_file: "evaluation/audio/held_out/heldout_interrupt_human_handoff_002.wav"
+
+required_facts: []
+forbidden_facts: []
+
+expected_tools: []

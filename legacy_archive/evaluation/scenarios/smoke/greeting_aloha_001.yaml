@@ -1,0 +1,25 @@
+allowed_facts:
+- Gandhi Pura
+- Balotra
+- Barmer
+- Rajasthan
+caller_goal: greeting
+category: normal
+description: 'Batch 1 Scenario: Aloha, good day.'
+expected_tools: []
+forbidden_facts:
+- goodbye
+- hangup
+id: greeting_aloha_001
+language: en
+required_facts:
+- assist
+success_conditions:
+- stt_not_empty
+- required_facts_present
+- forbidden_facts_absent
+- agent_audio_generated
+suite: smoke
+transport: direct_audiosocket
+turns:
+- audio_file: evaluation/audio/synthetic/greeting_aloha_001.wav

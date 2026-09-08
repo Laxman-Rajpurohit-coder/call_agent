@@ -1,0 +1,15 @@
+{
+  "tool": "tag_customer",
+  "caller": "dograh_agent",
+  "source_session": "dograh-session-001",
+  "http_status": 200,
+  "database_persisted": true,
+  "result_returned_to_agent": true,
+  "records": {
+    "id": 1,
+    "customer_id": "cust_001",
+    "tag": "urgent",
+    "reason": "Customer requested immediate assistance with application",
+    "created_at": "2026-08-22 04:58:42"
+  }
+}

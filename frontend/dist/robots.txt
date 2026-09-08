@@ -1,0 +1,6 @@
+# Superfone AI Voice Operations Platform robots.txt
+User-agent: *
+Allow: /
+
+# Sitemap
+Sitemap: https://superfone.ai/sitemap.xml

@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  dograh-voice:
+    image: dograh/voice-runtime:latest
+    container_name: dograh-voice-runtime
+    restart: unless-stopped
+    ports:
+      - "8080:8080"   # HTTP/WebSocket Management API
+      - "5060:5060/udp" # SIP Signaling
+      - "10000-10100:10000-10100/udp" # RTP Media
+    environment:
+      - DOGRAH_ENV=self-hosted
+      - LOCAL_STT_URL=http://host.docker.internal:9094/stt
+      - LOCAL_LLM_URL=http://host.docker.internal:9093/llm/stream
+      - LOCAL_TTS_URL=http://host.docker.internal:9095/tts
+      - CRM_TOOL_URL=http://host.docker.internal:9098/tools
+      - ASTERISK_HOST=host.docker.internal
+      - ASTERISK_PORT=5060
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./config:/app/config
+      - ./recordings:/app/recordings
+    depends_on:
+      - postgres-crm
+
+  postgres-crm:
+    image: postgres:15-alpine
+    container_name: dograh-postgres-crm
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=superfone_crm
+      - POSTGRES_USER=superfone
+      - POSTGRES_PASSWORD=superfone_secret
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./tools/db_schema.sql:/docker-entrypoint-initdb.d/init.sql
+
+volumes:
+  pgdata:

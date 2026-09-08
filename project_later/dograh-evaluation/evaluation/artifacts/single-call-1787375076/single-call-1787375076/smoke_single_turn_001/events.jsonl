@@ -1,0 +1,8 @@
+{"trace_id": "eval-single-call-1787375076-smoke_single_turn_001", "timestamp_ms": 1787375076038, "event": "call_started", "scenario_id": "smoke_single_turn_001", "call_uuid": "0ab0ab34-bf5f-4d47-98f6-72f7cf0c4085"}
+{"trace_id": "eval-single-call-1787375076-smoke_single_turn_001", "timestamp_ms": 1787375076038, "event": "audiosocket_connected", "host": "127.0.0.1", "port": 9092}
+{"trace_id": "eval-single-call-1787375076-smoke_single_turn_001", "timestamp_ms": 1787375076038, "event": "caller_speech_started", "frame_count": 35}
+{"trace_id": "eval-single-call-1787375076-smoke_single_turn_001", "timestamp_ms": 1787375077114, "event": "caller_speech_ended", "duration_s": 0.7}
+{"trace_id": "eval-single-call-1787375076-smoke_single_turn_001", "timestamp_ms": 1787375079629, "event": "agent_playback_started", "caller_speech_end_to_playback_start_ms": 2515, "call_start_to_playback_start_ms": 3588}
+{"trace_id": "eval-single-call-1787375076-smoke_single_turn_001", "timestamp_ms": 1787375084118, "event": "agent_playback_completed", "frames_received": 119, "total_duration_s": 2.38}
+{"trace_id": "eval-single-call-1787375076-smoke_single_turn_001", "timestamp_ms": 1787375084119, "event": "call_ended", "duration_ms": 8078}
+{"trace_id": "eval-single-call-1787375076-smoke_single_turn_001", "timestamp_ms": 1787375084155, "event": "stt_result", "text": "No.", "confidence": 0.0}

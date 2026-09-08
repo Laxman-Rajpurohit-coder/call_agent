@@ -1,0 +1,3 @@
+{"timestamp_ms": 1787378163363, "event": "pipeline_started", "session_id": "dograh-sess-980b7f7d89"}
+{"timestamp_ms": 1787378163383, "event": "stt_input_frame", "text": "No."}
+{"timestamp_ms": 1787378165989, "event": "tool_call_completed", "tool_result": {"status": "SUCCESS", "note_id": 11, "call_id": "dograh-sess-980b7f7d89", "summary": "Normal office hours inquiry", "action_items": "None"}}

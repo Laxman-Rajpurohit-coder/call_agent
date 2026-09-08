@@ -1,0 +1,22 @@
+caller_goal: quiet_speech_test
+category: quiet_speech
+description: 'Quiet Speech Scenario: Where is the foundation located in Balotra?'
+expected_tools: []
+forbidden_facts:
+- Jaipur
+- Delhi
+id: quiet_balotra_002
+language: en
+required_facts:
+- Gandhi Pura
+- Balotra
+success_conditions:
+- stt_not_empty
+- quiet_speech_accepted
+- required_facts_present
+- forbidden_facts_absent
+- agent_audio_generated
+suite: smoke
+transport: direct_audiosocket
+turns:
+- audio_file: evaluation/audio/synthetic/quiet_balotra_002.wav

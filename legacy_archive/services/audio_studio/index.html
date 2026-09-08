@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Superfone Audio Parameter Studio</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    body { background-color: #0b0f19; color: #e2e8f0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    .glass-card { background: rgba(17, 24, 39, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); }
+    input[type=range] { accent-color: #38bdf8; }
+    .pulse-glow { box-shadow: 0 0 20px rgba(56, 189, 248, 0.35); }
+  </style>
+</head>
+<body class="min-h-screen p-4 md:p-8 flex flex-col items-center">
+
+  <!-- Header -->
+  <header class="w-full max-w-5xl mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-800 pb-6">
+    <div>
+      <div class="flex items-center gap-3">
+        <div class="p-2.5 bg-gradient-to-tr from-sky-600 to-indigo-600 rounded-xl shadow-lg shadow-sky-500/20">
+          <i class="fa-solid fa-sliders text-white text-xl"></i>
+        </div>
+        <div>
+          <h1 class="text-2xl font-bold text-white tracking-tight">Audio & Voice Parameter Studio</h1>
+          <p class="text-xs text-slate-400">Live Acoustic Tuning & Real-Time Telephony Gateway Control</p>
+        </div>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Kokoro-82M Neural Engine
+      </span>
+      <button onclick="saveActiveConfig()" id="btnSaveConfig" class="px-4 py-2 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white text-sm font-semibold rounded-xl transition duration-200 flex items-center gap-2 shadow-lg shadow-sky-500/25">
+        <i class="fa-solid fa-cloud-arrow-up"></i> Apply to Live Phone Bot
+      </button>
+    </div>
+  </header>
+
+  <div class="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+    <!-- Left Column: Parameter Sliders -->
+    <div class="lg:col-span-7 space-y-6">
+      
+      <!-- Voice Selection -->
+      <div class="glass-card rounded-2xl p-6 shadow-xl">
+        <h2 class="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-4 flex items-center gap-2">
+          <i class="fa-solid fa-microphone text-sky-400"></i> Voice Model Profile
+        </h2>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5" id="voiceGrid">
+          <button onclick="selectVoice('hi_pratham')" data-voice="hi_pratham" class="voice-btn p-3 rounded-xl border border-emerald-500 bg-emerald-500/15 text-left transition">
+            <div class="font-semibold text-white text-sm flex items-center gap-1.5">🇮🇳 Pratham</div>
+            <div class="text-xs text-emerald-300">Hindi / North Indian</div>
+          </button>
+          <button onclick="selectVoice('af_sarah')" data-voice="af_sarah" class="voice-btn p-3 rounded-xl border border-sky-500 bg-sky-500/15 text-left transition">
+            <div class="font-semibold text-white text-sm">Sarah</div>
+            <div class="text-xs text-sky-300">Female (Warm & Clear)</div>
+          </button>
+          <button onclick="selectVoice('af_bella')" data-voice="af_bella" class="voice-btn p-3 rounded-xl border border-slate-700 bg-slate-800/40 text-left transition hover:border-slate-600">
+            <div class="font-semibold text-white text-sm">Bella</div>
+            <div class="text-xs text-slate-400">Female (Soft Tone)</div>
+          </button>
+          <button onclick="selectVoice('af_nicole')" data-voice="af_nicole" class="voice-btn p-3 rounded-xl border border-slate-700 bg-slate-800/40 text-left transition hover:border-slate-600">
+            <div class="font-semibold text-white text-sm">Nicole</div>
+            <div class="text-xs text-slate-400">Female (Crisp Tone)</div>
+          </button>
+          <button onclick="selectVoice('am_adam')" data-voice="am_adam" class="voice-btn p-3 rounded-xl border border-slate-700 bg-slate-800/40 text-left transition hover:border-slate-600">
+            <div class="font-semibold text-white text-sm">Adam</div>
+            <div class="text-xs text-slate-400">Male (Resonant)</div>
+          </button>
+          <button onclick="selectVoice('am_michael')" data-voice="am_michael" class="voice-btn p-3 rounded-xl border border-slate-700 bg-slate-800/40 text-left transition hover:border-slate-600">
+            <div class="font-semibold text-white text-sm">Michael</div>
+            <div class="text-xs text-slate-400">Male (Executive)</div>
+          </button>
+          <button onclick="selectVoice('bf_emma')" data-voice="bf_emma" class="voice-btn p-3 rounded-xl border border-slate-700 bg-slate-800/40 text-left transition hover:border-slate-600">
+            <div class="font-semibold text-white text-sm">Emma</div>
+            <div class="text-xs text-slate-400">British Female (RP)</div>
+          </button>
+          <button onclick="selectVoice('bm_george')" data-voice="bm_george" class="voice-btn p-3 rounded-xl border border-slate-700 bg-slate-800/40 text-left transition hover:border-slate-600">
+            <div class="font-semibold text-white text-sm">George</div>
+            <div class="text-xs text-slate-400">British Male (Warm)</div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Core Acoustic Parameters -->
+      <div class="glass-card rounded-2xl p-6 shadow-xl space-y-5">
+        <h2 class="text-sm font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+          <i class="fa-solid fa-wave-square text-sky-400"></i> Acoustic Pacing & Signal Tuning
+        </h2>
+
+        <!-- Speaking Speed -->
+        <div>
+          <div class="flex justify-between text-xs mb-1.5">
+            <span class="text-slate-300 font-medium">Speaking Speed / Pacing</span>
+            <span class="text-sky-400 font-mono font-semibold" id="valSpeed">1.00x</span>
+          </div>
+          <input type="range" id="paramSpeed" min="0.75" max="1.35" step="0.05" value="1.0" class="w-full h-2 bg-slate-800 rounded-lg cursor-pointer" oninput="updateParam('Speed', this.value + 'x')">
+          <div class="flex justify-between text-[10px] text-slate-500 mt-1">
+            <span>0.75x (Deliberate)</span>
+            <span>1.00x (Natural Conversational)</span>
+            <span>1.35x (Brisk)</span>
+          </div>
+        </div>
+
+        <!-- Volume Gain -->
+        <div>
+          <div class="flex justify-between text-xs mb-1.5">
+            <span class="text-slate-300 font-medium">Volume Normalization Gain (dBFS)</span>
+            <span class="text-sky-400 font-mono font-semibold" id="valGain">0.0 dB</span>
+          </div>
+          <input type="range" id="paramGain" min="-6.0" max="6.0" step="0.5" value="0.0" class="w-full h-2 bg-slate-800 rounded-lg cursor-pointer" oninput="updateParam('Gain', this.value + ' dB')">
+          <div class="flex justify-between text-[10px] text-slate-500 mt-1">
+            <span>-6.0 dB (Quiet)</span>
+            <span>0.0 dB (Target -19 dBFS)</span>
+            <span>+6.0 dB (Loud)</span>
+          </div>
+        </div>
+
+        <!-- Soft Attack Fade-In -->
+        <div>
+          <div class="flex justify-between text-xs mb-1.5">
+            <span class="text-slate-300 font-medium">Pre-Roll Soft Attack (Fade-In)</span>
+            <span class="text-sky-400 font-mono font-semibold" id="valFadeIn">4 ms</span>
+          </div>
+          <input type="range" id="paramFadeIn" min="0" max="16" step="1" value="4" class="w-full h-2 bg-slate-800 rounded-lg cursor-pointer" oninput="updateParam('FadeIn', this.value + ' ms')">
+          <div class="flex justify-between text-[10px] text-slate-500 mt-1">
+            <span>0 ms (Instant)</span>
+            <span>4 ms (Anti-Pop)</span>
+            <span>16 ms (Smooth Rise)</span>
+          </div>
+        </div>
+
+        <!-- Comfort Silence -->
+        <div>
+          <div class="flex justify-between text-xs mb-1.5">
+            <span class="text-slate-300 font-medium">Inter-Turn Comfort Silence & Padding</span>
+            <span class="text-sky-400 font-mono font-semibold" id="valSilence">40 ms</span>
+          </div>
+          <input type="range" id="paramSilence" min="0" max="120" step="10" value="40" class="w-full h-2 bg-slate-800 rounded-lg cursor-pointer" oninput="updateParam('Silence', this.value + ' ms')">
+          <div class="flex justify-between text-[10px] text-slate-500 mt-1">
+            <span>0 ms (Tight)</span>
+            <span>40 ms (Natural Telephony)</span>
+            <span>120 ms (Relaxed)</span>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- Right Column: Interactive Tester & Waveform -->
+    <div class="lg:col-span-5 space-y-6">
+
+      <!-- Text Prompt & Tester -->
+      <div class="glass-card rounded-2xl p-6 shadow-xl space-y-4">
+        <h2 class="text-sm font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+          <i class="fa-solid fa-comments text-sky-400"></i> Interactive Test Prompt
+        </h2>
+
+        <!-- Preset Chips -->
+        <div class="flex flex-wrap gap-1.5">
+          <button onclick="setPrompt(0)" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-[11px] rounded-lg text-slate-300 transition">👋 Welcome Greeting</button>
+          <button onclick="setPrompt(1)" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-[11px] rounded-lg text-slate-300 transition">🕒 Office Hours</button>
+          <button onclick="setPrompt(2)" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-[11px] rounded-lg text-slate-300 transition">🇮🇳 Hindi Greeting</button>
+          <button onclick="setPrompt(3)" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-[11px] rounded-lg text-slate-300 transition">📞 Callback Note</button>
+        </div>
+
+        <textarea id="promptText" rows="3" class="w-full bg-slate-900/90 border border-slate-700 rounded-xl p-3 text-sm text-slate-200 focus:outline-none focus:border-sky-500 transition resize-none">Hello, welcome to Malisaini Samaj Seva Foundation. How can I help you today?</textarea>
+
+        <button onclick="testSynthesize()" id="btnSynthesize" class="w-full py-3 bg-sky-500 hover:bg-sky-400 text-white font-semibold rounded-xl transition duration-200 flex items-center justify-center gap-2 shadow-lg shadow-sky-500/20">
+          <i class="fa-solid fa-play"></i> Synthesize & Play Live
+        </button>
+
+        <!-- Audio Player -->
+        <div id="playerContainer" class="hidden p-3 bg-slate-900/80 rounded-xl border border-slate-800">
+          <audio id="audioPlayer" controls class="w-full h-9"></audio>
+        </div>
+
+      </div>
+
+      <!-- Telemetry Dashboard -->
+      <div class="glass-card rounded-2xl p-6 shadow-xl">
+        <h2 class="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-4 flex items-center gap-2">
+          <i class="fa-solid fa-chart-simple text-sky-400"></i> Synthesis Telemetry
+        </h2>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="p-3 bg-slate-900/60 rounded-xl border border-slate-800/80">
+            <div class="text-[11px] text-slate-400">Generation Latency</div>
+            <div class="text-lg font-bold font-mono text-emerald-400 mt-0.5" id="teleLatency">-- ms</div>
+          </div>
+          <div class="p-3 bg-slate-900/60 rounded-xl border border-slate-800/80">
+            <div class="text-[11px] text-slate-400">Real-Time Factor (RTF)</div>
+            <div class="text-lg font-bold font-mono text-sky-400 mt-0.5" id="teleRTF">--</div>
+          </div>
+          <div class="p-3 bg-slate-900/60 rounded-xl border border-slate-800/80">
+            <div class="text-[11px] text-slate-400">RMS Energy Level</div>
+            <div class="text-lg font-bold font-mono text-purple-400 mt-0.5" id="teleRMS">-- dBFS</div>
+          </div>
+          <div class="p-3 bg-slate-900/60 rounded-xl border border-slate-800/80">
+            <div class="text-[11px] text-slate-400">Clipping & Distortion</div>
+            <div class="text-lg font-bold font-mono text-emerald-400 mt-0.5" id="telePeak">Clean (0 Clip)</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <script>
+    let selectedVoice = "af_sarah";
+    const presets = [
+      "Hello, welcome to Malisaini Samaj Seva Foundation. How can I help you today?",
+      "Our Balotra office is open Monday through Saturday, from 9:00 AM to 5:00 PM.",
+      "नमस्ते, मालिसैनी समाज सेवा फाउंडेशन में आपका स्वागत है। मैं आपकी क्या मदद कर सकता हूँ?",
+      "Certainly! I have scheduled a priority callback with Director Sanjay Gahlot for Monday morning."
+    ];
+
+    function selectVoice(v) {
+      selectedVoice = v;
+      document.querySelectorAll(".voice-btn").forEach(btn => {
+        if (btn.dataset.voice === v) {
+          btn.className = "voice-btn p-3 rounded-xl border border-sky-500 bg-sky-500/15 text-left transition";
+          btn.querySelector("div:last-child").className = "text-xs text-sky-300";
+        } else {
+          btn.className = "voice-btn p-3 rounded-xl border border-slate-700 bg-slate-800/40 text-left transition hover:border-slate-600";
+          btn.querySelector("div:last-child").className = "text-xs text-slate-400";
+        }
+      });
+    }
+
+    function setPrompt(idx) {
+      document.getElementById("promptText").value = presets[idx];
+    }
+
+    function updateParam(name, val) {
+      document.getElementById("val" + name).innerText = val;
+    }
+
+    async function testSynthesize() {
+      const btn = document.getElementById("btnSynthesize");
+      const text = document.getElementById("promptText").value.trim();
+      const speed = parseFloat(document.getElementById("paramSpeed").value);
+      const volume_gain_db = parseFloat(document.getElementById("paramGain").value);
+      const fade_in_ms = parseFloat(document.getElementById("paramFadeIn").value);
+
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Synthesizing...';
+
+      try {
+        const res = await fetch("/api/synthesize", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text, voice: selectedVoice, speed, volume_gain_db, fade_in_ms })
+        });
+
+        if (!res.ok) throw new Error("Synthesis failed");
+
+        // Telemetry headers
+        document.getElementById("teleLatency").innerText = res.headers.get("X-Latency-MS") + " ms";
+        document.getElementById("teleRTF").innerText = res.headers.get("X-RTF");
+        document.getElementById("teleRMS").innerText = res.headers.get("X-RMS-DBFS") + " dBFS";
+        
+        const peak = parseInt(res.headers.get("X-Peak") || "0");
+        const peakEl = document.getElementById("telePeak");
+        if (peak >= 32760) {
+          peakEl.innerText = "Clipping Warning";
+          peakEl.className = "text-lg font-bold font-mono text-rose-400 mt-0.5";
+        } else {
+          peakEl.innerText = "Clean (0 Clip)";
+          peakEl.className = "text-lg font-bold font-mono text-emerald-400 mt-0.5";
+        }
+
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const player = document.getElementById("audioPlayer");
+        player.src = url;
+        document.getElementById("playerContainer").classList.remove("hidden");
+        player.play();
+      } catch (e) {
+        alert("Error generating audio: " + e.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-play"></i> Synthesize & Play Live';
+      }
+    }
+
+    async function saveActiveConfig() {
+      const btn = document.getElementById("btnSaveConfig");
+      const speed = parseFloat(document.getElementById("paramSpeed").value);
+      const volume_gain_db = parseFloat(document.getElementById("paramGain").value);
+      const fade_in_ms = parseFloat(document.getElementById("paramFadeIn").value);
+      const silence_padding_ms = parseFloat(document.getElementById("paramSilence").value);
+
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-check"></i> Applied to Live Bot!';
+
+      try {
+        await fetch("/api/config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ voice: selectedVoice, speed, volume_gain_db, fade_in_ms, silence_padding_ms })
+        });
+      } catch (e) {
+        console.error("Save config error:", e);
+      }
+
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> Apply to Live Phone Bot';
+      }, 2000);
+    }
+
+    async function loadCurrentConfig() {
+      try {
+        const res = await fetch("/api/config");
+        if (!res.ok) return;
+        const cfg = await res.json();
+        if (cfg.voice) selectVoice(cfg.voice);
+        if (cfg.speed !== undefined) {
+          document.getElementById("paramSpeed").value = cfg.speed;
+          updateParam("Speed", cfg.speed + "x");
+        }
+        if (cfg.volume_gain_db !== undefined) {
+          document.getElementById("paramGain").value = cfg.volume_gain_db;
+          updateParam("Gain", cfg.volume_gain_db + " dB");
+        }
+        if (cfg.fade_in_ms !== undefined) {
+          document.getElementById("paramFadeIn").value = cfg.fade_in_ms;
+          updateParam("FadeIn", cfg.fade_in_ms + " ms");
+        }
+        if (cfg.silence_padding_ms !== undefined) {
+          document.getElementById("paramSilence").value = cfg.silence_padding_ms;
+          updateParam("Silence", cfg.silence_padding_ms + " ms");
+        }
+      } catch (e) {
+        console.error("Failed to load active config:", e);
+      }
+    }
+
+    window.addEventListener("DOMContentLoaded", loadCurrentConfig);
+  </script>
+</body>
+</html>

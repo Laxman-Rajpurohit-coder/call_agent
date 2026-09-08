@@ -1,0 +1,32 @@
+id: donation_inquiry_001
+suite: smoke
+language: en
+category: normal
+transport: direct_audiosocket
+caller_goal: donation_inquiry
+description: "Batch 1 Scenario: How can I make a donation to support the foundation?"
+
+turns:
+  - audio_file: "evaluation/audio/synthetic/donation_inquiry_001.wav"
+
+allowed_facts:
+  - "Gandhi Pura"
+  - "Balotra"
+  - "Barmer"
+  - "Rajasthan"
+
+required_facts:
+  - "donation"
+  - "support"
+
+forbidden_facts:
+  - "paytm 99999"
+  - "credit card only"
+
+expected_tools: []
+
+success_conditions:
+  - stt_not_empty
+  - required_facts_present
+  - forbidden_facts_absent
+  - agent_audio_generated

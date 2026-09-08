@@ -1,0 +1,21 @@
+id: loud_agent_interruption_003
+suite: barge_in_noise
+category: genuine_barge_in
+language: en
+transport: direct_audiosocket
+description: Caller interrupts while agent is speaking loud address facts
+turns:
+- audio_file: evaluation/audio/synthetic/opening_hours_001.wav
+barge_in:
+  interrupt_audio: evaluation/audio/synthetic/caller_actually_address_001.wav
+  interrupt_after_playback_ms: 1000
+required_facts:
+- Gandhi Pura
+- Balotra
+expected:
+  barge_in_detected: true
+  playback_stopped: true
+  interruption_complete: true
+success_conditions:
+- stt_not_empty
+- required_facts_present

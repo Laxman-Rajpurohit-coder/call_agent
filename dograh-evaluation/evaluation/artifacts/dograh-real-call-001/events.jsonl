@@ -1,0 +1,8 @@
+{"timestamp_ms": 1787377578090, "event": "dograh_call_started", "session_id": "dograh-session-001", "caller_number": "+919876543210"}
+{"timestamp_ms": 1787377578090, "event": "dograh_pipecat_pipeline_initialized", "session_id": "dograh-session-001", "pipeline_mode": "smallwebrtc_asterisk"}
+{"timestamp_ms": 1787377578093, "event": "dograh_stt_received", "session_id": "dograh-session-001", "caller_text": "No."}
+{"timestamp_ms": 1787377578093, "event": "dograh_llm_generation_completed", "session_id": "dograh-session-001", "text": "Our Balotra office is located at Gandhi Pura, open Monday to Saturday."}
+{"timestamp_ms": 1787377578093, "event": "dograh_tool_selected", "session_id": "dograh-session-001", "tool": "tag_customer", "customer_id": "cust_test_001", "tag": "urgent"}
+{"timestamp_ms": 1787377578432, "event": "dograh_tool_result_received", "session_id": "dograh-session-001", "tool": "tag_customer", "status": "SUCCESS", "response": {"status": "SUCCESS", "tag_id": 13, "customer_id": "cust_test_001", "tag": "urgent", "reason": "Provenance integration call from Dograh runtime"}}
+{"timestamp_ms": 1787377579216, "event": "dograh_audio_output_completed", "session_id": "dograh-session-001", "bytes_played": 67990, "duration_s": 4.25}
+{"timestamp_ms": 1787377579216, "event": "dograh_call_completed", "session_id": "dograh-session-001", "disposition": "normal_clearing"}

@@ -1,0 +1,14 @@
+id: heldout_noise_fan_ac_001
+suite: held_out
+category: noise_only
+language: en
+transport: direct_audiosocket
+description: "Continuous 50Hz AC hum and fan noise (RMS=450)"
+
+turns:
+  - audio_file: "evaluation/audio/held_out/heldout_noise_fan_ac_001.wav"
+
+required_facts: []
+forbidden_facts: []
+
+expected_tools: []

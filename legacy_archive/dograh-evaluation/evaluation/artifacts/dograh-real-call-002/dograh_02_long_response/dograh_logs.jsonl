@@ -1,0 +1,3 @@
+{"timestamp_ms": 1787378166000, "level": "INFO", "msg": "Call session dograh-sess-942b38fa91 accepted from Asterisk channel PJSIP/dograh-20e6a1"}
+{"timestamp_ms": 1787378166010, "level": "INFO", "msg": "Pipecat voice worker pipeline attached to session dograh-sess-942b38fa91"}
+{"timestamp_ms": 1787378167567, "level": "INFO", "msg": "CRM tool executed for session dograh-sess-942b38fa91: SUCCESS"}

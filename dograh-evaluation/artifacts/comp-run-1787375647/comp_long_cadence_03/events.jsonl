@@ -1,0 +1,8 @@
+{"trace_id": "eval-comp-run-1787375647-comp_long_cadence_03", "timestamp_ms": 1787375880767, "event": "call_started", "scenario_id": "comp_long_cadence_03", "call_uuid": "49b5c767-cfe2-40d3-a493-6c4bd57d67c3"}
+{"trace_id": "eval-comp-run-1787375647-comp_long_cadence_03", "timestamp_ms": 1787375880774, "event": "audiosocket_connected", "host": "127.0.0.1", "port": 9092}
+{"trace_id": "eval-comp-run-1787375647-comp_long_cadence_03", "timestamp_ms": 1787375880776, "event": "caller_speech_started", "frame_count": 74}
+{"trace_id": "eval-comp-run-1787375647-comp_long_cadence_03", "timestamp_ms": 1787375883076, "event": "caller_speech_ended", "duration_s": 1.48}
+{"trace_id": "eval-comp-run-1787375647-comp_long_cadence_03", "timestamp_ms": 1787375885234, "event": "agent_playback_started", "caller_speech_end_to_playback_start_ms": 2158, "call_start_to_playback_start_ms": 4462}
+{"trace_id": "eval-comp-run-1787375647-comp_long_cadence_03", "timestamp_ms": 1787375890191, "event": "agent_playback_completed", "frames_received": 127, "total_duration_s": 2.54}
+{"trace_id": "eval-comp-run-1787375647-comp_long_cadence_03", "timestamp_ms": 1787375890191, "event": "call_ended", "duration_ms": 9419}
+{"trace_id": "eval-comp-run-1787375647-comp_long_cadence_03", "timestamp_ms": 1787375890219, "event": "stt_result", "text": "Hello, good morning.", "confidence": 0.0}

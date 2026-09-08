@@ -17,7 +17,14 @@ LLM serialization constraint (on record since M1 review):
 """
 
 import os
+import sys
 import re
+
+try:
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
+except Exception:
+    pass
 import time
 import queue
 import threading
@@ -221,14 +228,19 @@ _piper: PersistentPiper | None = None
 
 def normalize_text_for_telephony(text: str) -> str:
     """Normalizes raw LLM text for natural telephony TTS output."""
-    # 1. Clean markdown formatting
+    # 1. Clean markdown formatting and symbols that cause stutter
     text = re.sub(r'[*_#`~]', '', text)
     
-    # 2. Currency normalization
+    # 2. Hindi & English Time Normalization
+    text = re.sub(r'(\d{1,2}):00\s*([AaPp][Mm])?', r'\1 बजे', text)
+    text = re.sub(r'(\d{1,2}):(\d{2})', r'\1 बजकर \2 मिनट', text)
+    text = re.sub(r'\b(\d{1,2})\s*([AaPp][Mm])\b', r'\1 \2', text)
+
+    # 3. Currency normalization
     text = re.sub(r'(?:Rs\.?|₹)\s*(\d+)', r'\1 rupees', text)
     text = re.sub(r'\$\s*(\d+)', r'\1 dollars', text)
     
-    # 3. Phone number digit spacing
+    # 4. Phone number digit spacing
     def format_phone(m):
         digits = re.sub(r'\D', '', m.group(0))
         if len(digits) == 10:
@@ -239,67 +251,135 @@ def normalize_text_for_telephony(text: str) -> str:
 
     text = re.sub(r'\b(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b', format_phone, text)
     
-    # 4. Times (e.g. 10 AM / 5 PM)
-    text = re.sub(r'\b(\d{1,2})\s*([AaPp][Mm])\b', r'\1 \2', text)
+    # 5. Clean isolated colons or semicolons that cause unnatural pauses
+    text = re.sub(r'(?<=\D):(?=\D)', ' ', text)
+    text = re.sub(r'\s+', ' ', text)
 
     return text.strip()
 
 
+_piper_en: PersistentPiper | None = None
+_piper_hi: PersistentPiper | None = None
+_kokoro_engine = None
+
 def init_worker() -> None:
-    """Pool initializer. Spawns and warms one PersistentPiper per worker process."""
-    global _piper
+    """Pool initializer. Spawns and warms Kokoro-82M neural engine and Piper fallback."""
+    global _piper_en, _piper_hi, _kokoro_engine
+    
+    # 1. Initialize Kokoro-82M Neural Engine
+    try:
+        from services.tts.kokoro_engine import KokoroTTSEngine
+        _kokoro_engine = KokoroTTSEngine()
+        if _kokoro_engine.kokoro:
+            print(f"[TTS Worker {os.getpid()}] Kokoro-82M Neural Engine initialized successfully!")
+    except Exception as ex:
+        print(f"[TTS Worker {os.getpid()}] Kokoro init notice: {ex}")
+
+    # 2. Initialize Piper as Fallback / Devanagari Hindi engine
     piper_path = r"c:\daily_works\superfone_call\piper\piper\piper.exe"
-    voice_model = os.environ.get("PIPER_VOICE_MODEL", r"c:\daily_works\superfone_call\models\en_US-lessac-medium.onnx")
-    if not os.path.exists(piper_path):
-        raise FileNotFoundError(f"Piper executable not found: {piper_path}")
-    if not os.path.exists(voice_model):
-        raise FileNotFoundError(f"Voice model not found: {voice_model}")
-    _piper = PersistentPiper(piper_path=piper_path, voice_model=voice_model)
-    _piper.start()
-    print(f"[TTS Worker {os.getpid()}] Persistent Piper initialized (pid={_piper.proc.pid})")
+    en_model = os.environ.get("PIPER_VOICE_MODEL", r"c:\daily_works\superfone_call\models\en_US-lessac-medium.onnx")
+    hi_model = r"c:\daily_works\superfone_call\models\hi_IN-pratham-medium.onnx"
+
+    if os.path.exists(piper_path) and os.path.exists(en_model):
+        try:
+            _piper_en = PersistentPiper(piper_path=piper_path, voice_model=en_model)
+            _piper_en.start()
+        except Exception as e:
+            print(f"[TTS Worker {os.getpid()}] Piper EN fallback init warning: {e}")
+
+    if os.path.exists(piper_path) and os.path.exists(hi_model):
+        try:
+            _piper_hi = PersistentPiper(piper_path=piper_path, voice_model=hi_model)
+            _piper_hi.start()
+        except Exception as ex:
+            print(f"[TTS Worker {os.getpid()}] Hindi Piper init warning: {ex}")
 
 
-def generate_tts_and_resample(text: str, enqueue_time: float) -> dict:
+def get_live_voice_config() -> dict:
+    cfg_file = r"c:\daily_works\superfone_call\services\audio_studio\active_config.json"
+    if os.path.exists(cfg_file):
+        try:
+            import json
+            with open(cfg_file, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {"voice": "hi_female", "speed": 0.88, "volume_gain_db": 0.0, "fade_in_ms": 4.0}
+
+
+def generate_tts_and_resample(text: str, enqueue_time: float, requested_voice: str = None) -> dict:
     """
-    Synthesize text via persistent Piper, then downsample 22050 Hz → 8000 Hz.
-
-    Returns a dict with:
-      audio        — raw PCM16 mono at 8000 Hz
-      queue_wait_ms — wall-clock time from HTTP enqueue to worker task start
-      inference_ms  — Piper synthesis + resample_poly only (no queue wait)
-
-    Timing uses time.time() for queue_wait (cross-process wall clock) and
-    time.perf_counter() for inference (intra-process high resolution).
+    Synthesize text via Kokoro-82M (or Piper fallback), outputting clean 8000 Hz PCM16 mono
+    with live studio parameters (speed, voice profile, volume gain).
     """
-    # Queue wait: wall-clock delta from caller's enqueue timestamp
     worker_start_time = time.time()
     queue_wait_ms = (worker_start_time - enqueue_time) * 1000.0
 
-    if _piper is None:
-        raise RuntimeError("TTS worker not initialized")
-
     t_infer = time.perf_counter()
     clean_text = normalize_text_for_telephony(text)
-    pcm_22k = _piper.synthesize(clean_text) if clean_text else b""
-    if pcm_22k:
-        samples = np.frombuffer(pcm_22k, dtype=np.int16).astype(np.float32)
-        resampled = resample_poly(samples, 160, 441)   # 22050 → 8000 Hz
-        
-        # Prevent int16 integer overflow / wrap-around distortion buzz
-        resampled = np.clip(resampled, -32767.0, 32767.0)
-        
-        # Apply 1ms (8 samples @ 8kHz) zero-crossing micro-ramp to eliminate edge clicks without acoustic dips
-        fade_len = min(8, len(resampled) // 16)
-        if fade_len > 0:
-            fade_in = np.linspace(0.0, 1.0, fade_len)
-            fade_out = np.linspace(1.0, 0.0, fade_len)
-            resampled[:fade_len] *= fade_in
-            resampled[-fade_len:] *= fade_out
+    audio_bytes = b""
+    live_cfg = get_live_voice_config()
+    voice = requested_voice or live_cfg.get("voice", "hi_female")
+    speed = float(live_cfg.get("speed", 0.88))
+    volume_gain_db = float(live_cfg.get("volume_gain_db", 0.0))
+    fade_in_ms = float(live_cfg.get("fade_in_ms", 4.0))
 
-        audio_bytes = resampled.astype(np.int16).tobytes()
-    else:
-        audio_bytes = b""
+    print(f"[TTS STEP 1: PARSE & CONFIG] Text: \"{clean_text[:40]}...\" | Voice Profile: {voice} | Speed: {speed}x | Gain: {volume_gain_db}dB", flush=True)
+
+    # ⚡ 1. PRIMARY ULTRA-FAST DEEPGRAM AURA NEURAL TTS (~200ms LATENCY)
+    deepgram_key = os.environ.get("DEEPGRAM_API_KEY", "")
+    if deepgram_key and clean_text:
+        try:
+            import httpx
+            url = "https://api.deepgram.com/v1/speak?model=aura-asteria-en&encoding=linear16&sample_rate=8000"
+            res = httpx.post(
+                url,
+                headers={"Authorization": f"Token {deepgram_key}", "Content-Type": "application/json"},
+                json={"text": clean_text},
+                timeout=3.0
+            )
+            if res.status_code == 200 and len(res.content) > 44:
+                raw_pcm = res.content[44:] if res.content.startswith(b"RIFF") else res.content
+                audio_bytes = raw_pcm
+        except Exception as dg_err:
+            print(f"[TTS Worker] Deepgram Aura notice: {dg_err}", flush=True)
+
+    # 2. Kokoro-82M Neural Engine (Fallback)
+    if not audio_bytes and _kokoro_engine and _kokoro_engine.kokoro and clean_text:
+        try:
+            audio_bytes = _kokoro_engine.synthesize_telephony_8k(clean_text, voice=voice, speed=speed)
+            if audio_bytes and volume_gain_db != 0.0:
+                samples = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32)
+                samples = samples * (10.0 ** (volume_gain_db / 20.0))
+                samples = np.clip(samples, -32767.0, 32767.0).astype(np.int16)
+                audio_bytes = samples.tobytes()
+        except Exception as k_err:
+            print(f"[TTS Worker] Kokoro synthesis notice ({voice}): {k_err}", flush=True)
+            audio_bytes = b""
+
+    # 2. On-Premise Piper Fallback
+    if not audio_bytes and clean_text:
+        piper_instance = (_piper_hi if voice.startswith("hi_") or re.search(r'[\u0900-\u097F]', clean_text) else _piper_en)
+        if not piper_instance:
+            piper_instance = _piper_en or _piper_hi
+        if piper_instance:
+            try:
+                pcm_22k = piper_instance.synthesize(clean_text)
+                if pcm_22k:
+                    samples = np.frombuffer(pcm_22k, dtype=np.int16).astype(np.float32)
+                    resampled = resample_poly(samples, 160, 441)
+                    if volume_gain_db != 0.0:
+                        resampled = resampled * (10.0 ** (volume_gain_db / 20.0))
+                    resampled = np.clip(resampled, -32767.0, 32767.0)
+                    fade_len = int((fade_in_ms / 1000.0) * 8000)
+                    if fade_len > 0 and len(resampled) > fade_len:
+                        resampled[:fade_len] *= np.linspace(0.0, 1.0, fade_len)
+                    audio_bytes = resampled.astype(np.int16).tobytes()
+            except Exception as p_err:
+                print(f"[TTS Worker] Piper fallback error: {p_err}", flush=True)
+
     inference_ms = (time.perf_counter() - t_infer) * 1000.0
+    print(f"[TTS STEP 2: NEURAL SYNTHESIS COMPLETE] Inference Time: {inference_ms:.1f}ms | Produced: {len(audio_bytes)} bytes (8000Hz PCM16 Mono)", flush=True)
 
     return {
         "audio": audio_bytes,
@@ -343,24 +423,23 @@ def kill_piper_and_recover(text: str) -> dict:
 
 # ── HTTP server ───────────────────────────────────────────────────────────────
 
+from concurrent.futures import ThreadPoolExecutor
+
 class TTSServer:
     def __init__(self, host: str = "127.0.0.1", port: int = 9095, workers: int = 2):
         self.host = host
         self.port = port
         self.workers = workers
+        self.executor = None
+
     async def start(self) -> None:
-        self.executor = ProcessPoolExecutor(
-            max_workers=self.workers,
-            initializer=init_worker,
-        )
-        # Pre-warm all worker processes so Piper subprocesses are spawned and initialized
+        init_worker()
+        self.executor = ThreadPoolExecutor(max_workers=self.workers)
+        
+        # Pre-warm with a fast test synthesis
         loop = asyncio.get_running_loop()
-        warmup_tasks = [
-            loop.run_in_executor(self.executor, generate_tts_and_resample, "Hello", time.time())
-            for _ in range(self.workers)
-        ]
-        await asyncio.gather(*warmup_tasks)
-        print(f"[TTS Server] All {self.workers} worker processes fully pre-warmed and ready.")
+        await loop.run_in_executor(self.executor, generate_tts_and_resample, "Hello", time.time(), "hi_pratham")
+        print(f"[TTS Server] ThreadPool pre-warmed and ready.")
 
         app = web.Application()
         app.router.add_post("/tts", self.handle_tts)
@@ -370,7 +449,7 @@ class TTSServer:
         await site.start()
         print(
             f"TTS Server listening on http://{self.host}:{self.port}/tts "
-            f"with {self.workers} persistent-Piper workers"
+            f"with Kokoro-82M neural engine"
         )
 
     async def handle_tts(self, request: web.Request) -> web.Response:
@@ -378,13 +457,13 @@ class TTSServer:
         data = await request.json()
         text = data.get("text", "")
         call_id = data.get("call_id")
-        # Wall-clock enqueue time for cross-process queue-wait measurement
+        voice = data.get("voice") or data.get("voice_model") or "hi_pratham"
         enqueue_time = float(data.get("enqueue_time", time.time()))
 
         loop = asyncio.get_running_loop()
         try:
             result = await loop.run_in_executor(
-                self.executor, generate_tts_and_resample, text, enqueue_time
+                self.executor, generate_tts_and_resample, text, enqueue_time, voice
             )
             audio_pcm16_8k = result["audio"]
             queue_wait_ms = result["queue_wait_ms"]
@@ -396,6 +475,7 @@ class TTSServer:
             inference_ms = 0.0
 
         latency_ms = (time.perf_counter() - t_handler_start) * 1000.0
+        print(f"✅ [TTS STEP 3: STREAMING TO TELEPHONY GATEWAY] 200 OK | Latency: {latency_ms:.1f}ms | Queue Wait: {queue_wait_ms:.1f}ms | Audio Bytes: {len(audio_pcm16_8k)}", flush=True)
         return web.Response(
             body=audio_pcm16_8k,
             content_type="application/octet-stream",

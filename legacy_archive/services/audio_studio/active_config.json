@@ -1,0 +1,10 @@
+{
+  "voice": "bm_george",
+  "speed": 1.15,
+  "volume_gain_db": -3.0,
+  "fade_in_ms": 3,
+  "silence_padding_ms": 20,
+  "barge_in_fade_ms": 40.0,
+  "use_kokoro": true,
+  "resample_mode": "integer_3x"
+}

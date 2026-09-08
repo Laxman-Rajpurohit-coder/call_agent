@@ -1,0 +1,8 @@
+{
+  "scenario_id": "dograh_03_multi_turn",
+  "session_id": "dograh-sess-85c88caea2",
+  "system_under_test": "dograh",
+  "passed": true,
+  "audio_duration_s": 4.37,
+  "tool_status": "SUCCESS"
+}

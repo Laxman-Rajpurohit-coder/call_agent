@@ -1,0 +1,17 @@
+{
+  "scenario_id": "gate_01_normal_inbound",
+  "passed": false,
+  "checks": {
+    "stt_not_empty": true,
+    "required_facts_present": true,
+    "agent_audio_generated": false,
+    "zero_playback_underruns": true,
+    "continuity_score_pass": true
+  },
+  "failure_reasons": [
+    "audio_truncated_or_empty: duration=0.74s"
+  ],
+  "caller_transcript": "No.",
+  "agent_response": "Yes.",
+  "agent_audio_duration_s": 0.74
+}

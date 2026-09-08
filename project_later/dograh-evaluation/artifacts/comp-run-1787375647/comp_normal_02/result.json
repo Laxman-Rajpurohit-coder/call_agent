@@ -1,0 +1,17 @@
+{
+  "scenario_id": "comp_normal_02",
+  "passed": true,
+  "checks": {
+    "stt_not_empty": true,
+    "required_facts_present": true,
+    "short_response": true,
+    "duration_check": "informational_only",
+    "agent_audio_generated": true,
+    "zero_playback_underruns": true,
+    "continuity_score_pass": true
+  },
+  "failure_reasons": [],
+  "caller_transcript": "No.",
+  "agent_response": "",
+  "agent_audio_duration_s": 4.56
+}

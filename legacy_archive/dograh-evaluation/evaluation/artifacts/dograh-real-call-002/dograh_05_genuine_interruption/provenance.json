@@ -1,0 +1,13 @@
+{
+  "system_under_test": "dograh",
+  "dograh_app_container_id": "dograh-repo-postgres-1,dograh-repo-redis-1,minio",
+  "dograh_app_image": "ghcr.io/dograh-hq/dograh-api:latest",
+  "dograh_git_sha": "058c540c4d92c55f529d04fabceb17da4901a0cb",
+  "dograh_process_pid": 22204,
+  "pipecat_worker_id": "pipecat-worker-001",
+  "dograh_session_id": "dograh-sess-1684e0bc58",
+  "asterisk_channel_id": "PJSIP/dograh-889216",
+  "audiosocket_connection_id": "as-conn-7e91584a",
+  "tts_request_id": "tts-29fed6ac",
+  "crm_request_id": "crm-7cea189a"
+}

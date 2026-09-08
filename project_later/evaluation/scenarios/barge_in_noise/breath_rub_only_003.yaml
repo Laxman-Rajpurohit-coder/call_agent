@@ -1,0 +1,15 @@
+id: breath_rub_only_003
+suite: barge_in_noise
+category: breath_cough
+language: en
+transport: direct_audiosocket
+description: Caller breath or mic rub (mic_breath_002.wav) - must not cut agent mid-sentence
+turns:
+- audio_file: evaluation/audio/synthetic/mic_breath_002.wav
+expected:
+  agent_playback_completed: true
+  barge_in_detected: false
+  false_barge_in: false
+  mid_sentence_cut: false
+success_conditions:
+- silent_rejection

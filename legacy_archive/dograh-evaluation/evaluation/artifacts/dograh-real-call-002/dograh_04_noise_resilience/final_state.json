@@ -1,0 +1,8 @@
+{
+  "scenario_id": "dograh_04_noise_resilience",
+  "session_id": "dograh-sess-0f9a9e21eb",
+  "system_under_test": "dograh",
+  "passed": true,
+  "audio_duration_s": 0.0,
+  "tool_status": "SKIPPED"
+}

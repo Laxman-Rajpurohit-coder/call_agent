@@ -1,0 +1,739 @@
+[
+  {
+    "filename": "c1a2f0fb-6822-44e9-e701-d6dedd9f62dc-20260819-114719.wav",
+    "duration_sec": 80.3,
+    "language_detected": "ja",
+    "language_prob": 0.23,
+    "segments": [
+      {
+        "start": 0.08,
+        "end": 3.12,
+        "text": "大きいですね、バターに、バターに合わせて、"
+      },
+      {
+        "start": 3.12,
+        "end": 4.02,
+        "text": "гardsicsの病ばれコントロット、"
+      },
+      {
+        "start": 4.02,
+        "end": 5.8,
+        "text": "誘致でアレッドに立ち回ったチャ…"
+      },
+      {
+        "start": 5.8,
+        "end": 7.04,
+        "text": "君、"
+      },
+      {
+        "start": 7.04,
+        "end": 7.8,
+        "text": "ビギッピー、"
+      },
+      {
+        "start": 7.8,
+        "end": 21.98,
+        "text": "アレッドにアレッドに立って赤 ビッピーシー."
+      },
+      {
+        "start": 21.98,
+        "end": 23.26,
+        "text": "ビギシーアベデン、"
+      },
+      {
+        "start": 23.26,
+        "end": 24.28,
+        "text": "致でアレッドに!"
+      }
+    ]
+  },
+  {
+    "filename": "959107e8-3d9a-35fd-16ef-49d39aa27e34-20260819-114427.wav",
+    "duration_sec": 38.76,
+    "language_detected": "ja",
+    "language_prob": 0.58,
+    "segments": [
+      {
+        "start": 0.05,
+        "end": 2.05,
+        "text": "みなさんのパパスターがある"
+      },
+      {
+        "start": 2.05,
+        "end": 7.03,
+        "text": "先生、バッターに出しているって言わせ、感想に来てください"
+      },
+      {
+        "start": 7.03,
+        "end": 8.03,
+        "text": "どうぞ"
+      }
+    ]
+  },
+  {
+    "filename": "9f4d286d-0c9d-870b-bf7a-cf469df7c402-20260819-114336.wav",
+    "duration_sec": 38.42,
+    "language_detected": "ja",
+    "language_prob": 0.93,
+    "segments": [
+      {
+        "start": 0.02,
+        "end": 2.02,
+        "text": "ご視聴ありがとうございました。"
+      },
+      {
+        "start": 2.02,
+        "end": 5.02,
+        "text": "またね、またね、またね、また、またね、また、また。"
+      }
+    ]
+  },
+  {
+    "filename": "be3c268c-a256-4aa8-03f0-25ee8c579484-20260819-114303.wav",
+    "duration_sec": 19.94,
+    "language_detected": "ko",
+    "language_prob": 0.31,
+    "segments": [
+      {
+        "start": 0.02,
+        "end": 1.02,
+        "text": "오!"
+      }
+    ]
+  },
+  {
+    "filename": "ecaed05a-ea22-4ea0-b176-5b60eabb47ae-20260819-114058.wav",
+    "duration_sec": 88.86,
+    "language_detected": "ja",
+    "language_prob": 0.88,
+    "segments": [
+      {
+        "start": 0.18,
+        "end": 2.18,
+        "text": "ご視聴ありがとうございました"
+      }
+    ]
+  },
+  {
+    "filename": "4d6df2ca-596e-f2d7-3464-48b572160c44-20260819-113349.wav",
+    "duration_sec": 8.04,
+    "language_detected": "ja",
+    "language_prob": 0.82,
+    "segments": [
+      {
+        "start": 0.05,
+        "end": 1.29,
+        "text": "どうして?"
+      },
+      {
+        "start": 1.29,
+        "end": 3.01,
+        "text": "皆さんにそのキラパンでしょ"
+      }
+    ]
+  },
+  {
+    "filename": "c780fefe-8fd6-3f96-c07e-2d1490976ced-20260819-113238.wav",
+    "duration_sec": 61.02,
+    "language_detected": "id",
+    "language_prob": 0.18,
+    "segments": [
+      {
+        "start": 0.98,
+        "end": 2.98,
+        "text": "Terus sen, masai disini kepalingan,"
+      },
+      {
+        "start": 2.98,
+        "end": 3.98,
+        "text": "Bantuan yang tersebut."
+      },
+      {
+        "start": 3.98,
+        "end": 4.98,
+        "text": "Naya dikensan hatas-tas."
+      },
+      {
+        "start": 4.98,
+        "end": 9.98,
+        "text": "Oh, pula."
+      },
+      {
+        "start": 9.98,
+        "end": 10.98,
+        "text": "Dan sen, dan dimpunat taca."
+      },
+      {
+        "start": 10.98,
+        "end": 11.98,
+        "text": "Kau diudis."
+      },
+      {
+        "start": 11.98,
+        "end": 14.39,
+        "text": "Tantan yang apa?"
+      },
+      {
+        "start": 14.39,
+        "end": 15.39,
+        "text": "Di api."
+      },
+      {
+        "start": 15.39,
+        "end": 16.39,
+        "text": "Dan sen, dan dimpunat taca."
+      },
+      {
+        "start": 16.39,
+        "end": 17.39,
+        "text": "Pujud."
+      },
+      {
+        "start": 17.39,
+        "end": 19.39,
+        "text": "Sampai tantau."
+      },
+      {
+        "start": 19.39,
+        "end": 20.39,
+        "text": "Lisi yang terdeng."
+      },
+      {
+        "start": 20.39,
+        "end": 21.39,
+        "text": "Sen sen, dan dimpunat taca."
+      },
+      {
+        "start": 21.39,
+        "end": 22.39,
+        "text": "Oke."
+      }
+    ]
+  },
+  {
+    "filename": "7888e7a3-ae9a-f0a7-ad7a-61a9df784f9b-20260819-104132.wav",
+    "duration_sec": 28.08,
+    "language_detected": "en",
+    "language_prob": 0.3,
+    "segments": [
+      {
+        "start": 0.43,
+        "end": 2.43,
+        "text": "I never said that. How can I help you to run?"
+      },
+      {
+        "start": 3.23,
+        "end": 4.03,
+        "text": "Watch the video."
+      },
+      {
+        "start": 4.03,
+        "end": 8.08,
+        "text": "I just said that. How can I say that?"
+      },
+      {
+        "start": 8.48,
+        "end": 9.48,
+        "text": "Watch the video."
+      },
+      {
+        "start": 9.48,
+        "end": 11.89,
+        "text": "Take care."
+      },
+      {
+        "start": 11.89,
+        "end": 12.89,
+        "text": "Hello. I know."
+      }
+    ]
+  },
+  {
+    "filename": "35967316-987f-4147-f08c-67cbc73f3cf4-20260819-103749.wav",
+    "duration_sec": 121.04,
+    "language_detected": "ja",
+    "language_prob": 0.18,
+    "segments": [
+      {
+        "start": 0.08,
+        "end": 2.08,
+        "text": "ファスティ パクラ アクニティ 高"
+      },
+      {
+        "start": 3.08,
+        "end": 7.78,
+        "text": "あんまみ 高くな ファスティ 高くな アクニティ 高くな"
+      },
+      {
+        "start": 8.78,
+        "end": 14.05,
+        "text": "アクニティ 高くな アクニティ 高くな"
+      }
+    ]
+  },
+  {
+    "filename": "cb5a4190-9dd5-5ca8-319f-aabe39a284fe-20260819-103512.wav",
+    "duration_sec": 96.98,
+    "language_detected": "en",
+    "language_prob": 0.73,
+    "segments": [
+      {
+        "start": 0.3,
+        "end": 2.3,
+        "text": "Could you please provide one contact at the time of our crossing?"
+      },
+      {
+        "start": 3.66,
+        "end": 5.18,
+        "text": "No, what do you like to say?"
+      }
+    ]
+  },
+  {
+    "filename": "251f0e04-2e2c-142c-eab4-249940f7593d-20260819-102847.wav",
+    "duration_sec": 53.32,
+    "language_detected": "en",
+    "language_prob": 0.66,
+    "segments": [
+      {
+        "start": 0.14,
+        "end": 2.14,
+        "text": "Don't forget to message us in the comments."
+      },
+      {
+        "start": 2.14,
+        "end": 14.54,
+        "text": "See you in the next video."
+      }
+    ]
+  },
+  {
+    "filename": "4693824d-ce95-4faf-d55f-598b9861f3c2-20260819-095312.wav",
+    "duration_sec": 97.8,
+    "language_detected": "en",
+    "language_prob": 0.59,
+    "segments": [
+      {
+        "start": 0.59,
+        "end": 1.69,
+        "text": "Hello, I'm your versus assistant."
+      },
+      {
+        "start": 1.69,
+        "end": 2.79,
+        "text": "Okay."
+      },
+      {
+        "start": 2.79,
+        "end": 3.59,
+        "text": "I'm your assistant."
+      },
+      {
+        "start": 3.59,
+        "end": 4.59,
+        "text": "I'm your assistant."
+      },
+      {
+        "start": 4.59,
+        "end": 5.59,
+        "text": "I'm your assistant."
+      },
+      {
+        "start": 6.59,
+        "end": 7.09,
+        "text": "You're welcome."
+      },
+      {
+        "start": 7.09,
+        "end": 8.09,
+        "text": "Cut."
+      },
+      {
+        "start": 8.09,
+        "end": 9.59,
+        "text": "Hello, I'm your versus assistant."
+      },
+      {
+        "start": 9.59,
+        "end": 10.59,
+        "text": "I'm your assistant."
+      },
+      {
+        "start": 12.09,
+        "end": 13.09,
+        "text": "Okay, you're welcome."
+      },
+      {
+        "start": 13.09,
+        "end": 14.09,
+        "text": "Hello."
+      },
+      {
+        "start": 14.09,
+        "end": 15.09,
+        "text": "Hello."
+      },
+      {
+        "start": 15.09,
+        "end": 16.59,
+        "text": "What's the name of your assistant?"
+      },
+      {
+        "start": 16.59,
+        "end": 17.59,
+        "text": "How do you know?"
+      },
+      {
+        "start": 17.59,
+        "end": 19.59,
+        "text": "What's the name of your assistant?"
+      },
+      {
+        "start": 19.59,
+        "end": 20.59,
+        "text": "I'm your welcome."
+      },
+      {
+        "start": 20.59,
+        "end": 22.09,
+        "text": "I can help with a run."
+      },
+      {
+        "start": 22.09,
+        "end": 25.59,
+        "text": "I can lead a session."
+      },
+      {
+        "start": 25.59,
+        "end": 26.59,
+        "text": "I can, of course."
+      },
+      {
+        "start": 26.59,
+        "end": 27.99,
+        "text": "I can lead to the run."
+      },
+      {
+        "start": 27.99,
+        "end": 32.72,
+        "text": "Hello, how do I feel?"
+      },
+      {
+        "start": 32.72,
+        "end": 33.72,
+        "text": "I'm in a position."
+      },
+      {
+        "start": 33.72,
+        "end": 37.12,
+        "text": "I need to do this."
+      },
+      {
+        "start": 37.12,
+        "end": 38.12,
+        "text": "I'm not sure if I try this."
+      },
+      {
+        "start": 38.12,
+        "end": 42.58,
+        "text": "I'll stay."
+      },
+      {
+        "start": 43.58,
+        "end": 45.08,
+        "text": "This is probably my assistant."
+      },
+      {
+        "start": 46.08,
+        "end": 47.08,
+        "text": "I'll go with you."
+      }
+    ]
+  },
+  {
+    "filename": "6ce23af0-586b-57d3-5d5e-03c46eab36e3-20260819-095245.wav",
+    "duration_sec": 5.94,
+    "language_detected": "en",
+    "language_prob": 0.68,
+    "segments": [
+      {
+        "start": 0.0,
+        "end": 2.0,
+        "text": "Sure, I'll see you in the next one."
+      }
+    ]
+  },
+  {
+    "filename": "667bba44-fb98-8539-f2bc-17c5a15a30c7-20260819-095225.wav",
+    "duration_sec": 16.16,
+    "language_detected": "ja",
+    "language_prob": 0.19,
+    "segments": [
+      {
+        "start": 0.56,
+        "end": 2.56,
+        "text": "ご視聴ありがとうございました"
+      }
+    ]
+  },
+  {
+    "filename": "e98c24ed-d88f-de02-0e98-46f178433f2a-20260819-095137.wav",
+    "duration_sec": 40.68,
+    "language_detected": "ja",
+    "language_prob": 0.21,
+    "segments": [
+      {
+        "start": 0.21,
+        "end": 2.33,
+        "text": "かにかいのがチャンネル登録してね。"
+      },
+      {
+        "start": 2.33,
+        "end": 13.72,
+        "text": "足をねえねえねえねえ。"
+      },
+      {
+        "start": 13.72,
+        "end": 18.65,
+        "text": "だから完全にってるねえねえねえ。"
+      }
+    ]
+  },
+  {
+    "filename": "60d75c9e-3fb4-fdf8-0620-d6b3b9cea424-20260819-094629.wav",
+    "duration_sec": 15.22,
+    "language_detected": "ja",
+    "language_prob": 0.36,
+    "segments": [
+      {
+        "start": 0.34,
+        "end": 2.34,
+        "text": "ご視聴ありがとうございました"
+      }
+    ]
+  },
+  {
+    "filename": "348ac56b-fa77-c3c1-b341-fb79d804c3d4-20260819-093608.wav",
+    "duration_sec": 11.98,
+    "language_detected": "zh",
+    "language_prob": 0.13,
+    "segments": [
+      {
+        "start": 0.02,
+        "end": 2.02,
+        "text": "咱哋哋咱哋"
+      }
+    ]
+  },
+  {
+    "filename": "24c43f37-9cef-177d-902d-18eb086931a0-20260819-091215.wav",
+    "duration_sec": 11.12,
+    "language_detected": "en",
+    "language_prob": 0.31,
+    "segments": [
+      {
+        "start": 0.21,
+        "end": 2.21,
+        "text": "Okay, I'll keep it there. Go. I knew what it was."
+      }
+    ]
+  },
+  {
+    "filename": "57a1bd9d-c0cc-2cd5-ed38-7ba7a88d20b5-20260819-090751.wav",
+    "duration_sec": 7.22,
+    "language_detected": "en",
+    "language_prob": 0.5,
+    "segments": [
+      {
+        "start": 0.05,
+        "end": 2.05,
+        "text": "Good night. Hello. I'm your first assistant."
+      }
+    ]
+  },
+  {
+    "filename": "692dcd85-126e-962d-6c6f-d207e224b692-20260819-090006.wav",
+    "duration_sec": 15.1,
+    "language_detected": "ja",
+    "language_prob": 0.34,
+    "segments": [
+      {
+        "start": 0.05,
+        "end": 2.05,
+        "text": "それでは、ご視聴ありがとうございました。"
+      }
+    ]
+  },
+  {
+    "filename": "f749b772-6d38-b0fe-0f27-3f1047c1d76d-20260819-085939.wav",
+    "duration_sec": 15.86,
+    "language_detected": "en",
+    "language_prob": 0.43,
+    "segments": [
+      {
+        "start": 0.0,
+        "end": 1.72,
+        "text": "You're welcome, so sit. How can I drop you today?"
+      },
+      {
+        "start": 1.72,
+        "end": 2.24,
+        "text": "Sure."
+      },
+      {
+        "start": 2.24,
+        "end": 3.48,
+        "text": "I'll... I'll give you this."
+      }
+    ]
+  },
+  {
+    "filename": "95a7a1c1-2c5a-578f-7bd2-04a2b51e07f8-20260819-085925.wav",
+    "duration_sec": 8.46,
+    "language_detected": "en",
+    "language_prob": 0.46,
+    "segments": [
+      {
+        "start": 0.0,
+        "end": 2.0,
+        "text": "Thank you for watching."
+      }
+    ]
+  },
+  {
+    "filename": "02e7172c-6c6e-7d65-fe10-39f159e8d4da-20260819-085852.wav",
+    "duration_sec": 13.46,
+    "language_detected": "en",
+    "language_prob": 0.22,
+    "segments": [
+      {
+        "start": 0.0,
+        "end": 1.0,
+        "text": "So, how do I have to run?"
+      },
+      {
+        "start": 1.0,
+        "end": 2.0,
+        "text": "How?"
+      }
+    ]
+  },
+  {
+    "filename": "3b5a41d3-036c-6f72-52d6-ef78b10f4138-20260819-085836.wav",
+    "duration_sec": 7.38,
+    "language_detected": "en",
+    "language_prob": 0.23,
+    "segments": [
+      {
+        "start": 0.27,
+        "end": 1.27,
+        "text": "I'll see you next time."
+      },
+      {
+        "start": 1.27,
+        "end": 2.27,
+        "text": "Bye."
+      }
+    ]
+  },
+  {
+    "filename": "5fc1b927-4e3e-b7d3-1ae5-7bac51c83084-20260819-085524.wav",
+    "duration_sec": 11.3,
+    "language_detected": "en",
+    "language_prob": 0.36,
+    "segments": [
+      {
+        "start": 0.0,
+        "end": 1.0,
+        "text": "and go!"
+      },
+      {
+        "start": 1.0,
+        "end": 2.0,
+        "text": "Thank you for watching!"
+      }
+    ]
+  },
+  {
+    "filename": "6595b62c-eb18-b853-64f1-5851c694a8c9-20260819-085449.wav",
+    "duration_sec": 11.14,
+    "language_detected": "en",
+    "language_prob": 0.26,
+    "segments": [
+      {
+        "start": 1.23,
+        "end": 3.23,
+        "text": "Hello, any of us at the same time?"
+      }
+    ]
+  },
+  {
+    "filename": "c6ff575f-af16-c91e-82c2-40318f741be5-20260819-075407.wav",
+    "duration_sec": 21.22,
+    "language_detected": "en",
+    "language_prob": 0.17,
+    "segments": []
+  },
+  {
+    "filename": "722072a2-ad86-6e9a-fc4b-c88a89aef5eb-20260819-075127.wav",
+    "duration_sec": 111.34,
+    "language_detected": "en",
+    "language_prob": 0.3,
+    "segments": [
+      {
+        "start": 1.39,
+        "end": 2.63,
+        "text": "You're back in. I'll see you tomorrow."
+      }
+    ]
+  },
+  {
+    "filename": "da83a5aa-26a1-54b8-5063-940a188ec5cf-20260819-074542.wav",
+    "duration_sec": 17.76,
+    "language_detected": "en",
+    "language_prob": 0.23,
+    "segments": [
+      {
+        "start": 0.4,
+        "end": 2.4,
+        "text": "We're here to help you, you're right. We're here to help you."
+      }
+    ]
+  },
+  {
+    "filename": "a805fae3-607c-eeec-ad0e-e8dcdab20297-20260819-074408.wav",
+    "duration_sec": 56.4,
+    "language_detected": "en",
+    "language_prob": 0.52,
+    "segments": [
+      {
+        "start": 0.21,
+        "end": 2.21,
+        "text": "Recessive, how can I help you today? You're welcome."
+      },
+      {
+        "start": 2.21,
+        "end": 20.26,
+        "text": "And you're welcome."
+      }
+    ]
+  },
+  {
+    "filename": "9d064251-9716-5111-5911-8df332c41b07-20260819-074234.wav",
+    "duration_sec": 7.86,
+    "language_detected": "ja",
+    "language_prob": 0.43,
+    "segments": [
+      {
+        "start": 0.3,
+        "end": 1.62,
+        "text": "ずっと、下手る様子がいい!"
+      },
+      {
+        "start": 1.62,
+        "end": 2.62,
+        "text": "やばかに、バイバイ!"
+      }
+    ]
+  }
+]

@@ -1,0 +1,8 @@
+{"trace_id": "eval-five-gate-1787375633-gate_05_genuine_interruption", "timestamp_ms": 1787375669854, "event": "call_started", "scenario_id": "gate_05_genuine_interruption", "call_uuid": "a88e7565-f91e-4e2d-8d7e-92a5846731cf"}
+{"trace_id": "eval-five-gate-1787375633-gate_05_genuine_interruption", "timestamp_ms": 1787375669861, "event": "audiosocket_connected", "host": "127.0.0.1", "port": 9092}
+{"trace_id": "eval-five-gate-1787375633-gate_05_genuine_interruption", "timestamp_ms": 1787375669862, "event": "caller_speech_started", "frame_count": 113}
+{"trace_id": "eval-five-gate-1787375633-gate_05_genuine_interruption", "timestamp_ms": 1787375673402, "event": "caller_speech_ended", "duration_s": 2.26}
+{"trace_id": "eval-five-gate-1787375633-gate_05_genuine_interruption", "timestamp_ms": 1787375680782, "event": "agent_playback_started", "caller_speech_end_to_playback_start_ms": 7380, "call_start_to_playback_start_ms": 10922}
+{"trace_id": "eval-five-gate-1787375633-gate_05_genuine_interruption", "timestamp_ms": 1787375683078, "event": "agent_playback_completed", "frames_received": 115, "total_duration_s": 2.3}
+{"trace_id": "eval-five-gate-1787375633-gate_05_genuine_interruption", "timestamp_ms": 1787375683079, "event": "call_ended", "duration_ms": 13218}
+{"trace_id": "eval-five-gate-1787375633-gate_05_genuine_interruption", "timestamp_ms": 1787375683109, "event": "stt_result", "text": "Actually, tell me the address.", "confidence": 0.0}

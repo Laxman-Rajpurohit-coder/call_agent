@@ -1,0 +1,62 @@
+[
+  {
+    "scenario": "Scenario 5B: Pure Hindi & Bilingual Speech",
+    "file": "7ddac933-6a0d-a3e0-c3c1-a5f7b4ad59ab-20260823-061452.wav",
+    "timestamp": "11:45:41 AM",
+    "duration_s": 48.2,
+    "rms": 2299.2,
+    "peak": 24956.0,
+    "noise_floor": 7.5,
+    "speech_peak_rms": 6163.6,
+    "snr_db": 58.3,
+    "transcript": "Hello, my name is Gaksim Jai and I'm going to give you a little more information about India. جہتہ جب جہتہ جریتا ہے جہتی چاہتی you're welcome, I'm here to help, how can I assist you further جہتی افکلاری مطلچ دیکھتے بھتا سکتے ہیں نامست حلو there how can i assist you today"
+  },
+  {
+    "scenario": "Scenario 4: Natural Pauses & Speech Endpointing",
+    "file": "2bca8d62-df67-efe7-86e0-c48b63cf21d6-20260823-061404.wav",
+    "timestamp": "11:44:46 AM",
+    "duration_s": 41.98,
+    "rms": 2951.8,
+    "peak": 26156.0,
+    "noise_floor": 7.4,
+    "speech_peak_rms": 8102.3,
+    "snr_db": 60.7,
+    "transcript": "I am sorry, but I can't assist with that. Do you remember the past? Thank you for having me. What can I help with? I am sorry, but I can't assist with that. I understand, How can I assist you today? How can I assist you today?"
+  },
+  {
+    "scenario": "Scenario 3: Speaker Echo & Double-Talk (Barge-in)",
+    "file": "bf6cea95-1036-a118-0d8c-d57e64dfa824-20260823-061155.wav",
+    "timestamp": "11:42:37 AM",
+    "duration_s": 42.46,
+    "rms": 3395.0,
+    "peak": 32159.0,
+    "noise_floor": 8.0,
+    "speech_peak_rms": 8609.6,
+    "snr_db": 60.6,
+    "transcript": "Hello, how can I assist you? So, can we click, okay, that's wonderful to hear. How can I assist you further? and two three five"
+  },
+  {
+    "scenario": "Scenario 2: Far Mic & Soft Speech (AGC Gain Normalization)",
+    "file": "cbb7c8e4-e84d-2faf-f456-5fbd4525e826-20260823-061101.wav",
+    "timestamp": "11:41:41 AM",
+    "duration_s": 39.96,
+    "rms": 3275.8,
+    "peak": 27635.0,
+    "noise_floor": 8.0,
+    "speech_peak_rms": 9231.6,
+    "snr_db": 61.3,
+    "transcript": "Hello, how can I, hello, hello, hello, hello, hello. . . . You"
+  },
+  {
+    "scenario": "Scenario 1: Background Noise (Fan Hum + Typing Click Immunity)",
+    "file": "0fe95cc4-ad80-52ed-1f58-ea130641bc86-20260823-060927.wav",
+    "timestamp": "11:40:20 AM",
+    "duration_s": 53.14,
+    "rms": 736.1,
+    "peak": 18812.0,
+    "noise_floor": 7.6,
+    "speech_peak_rms": 1287.9,
+    "snr_db": 44.6,
+    "transcript": "Are you still there? Please let me know how I can assist you. just you."
+  }
+]

@@ -1,0 +1,11 @@
+{
+  "session_id": "dograh-sess-85c88caea2",
+  "tool_invocation": {
+    "status": "SUCCESS",
+    "callback_id": 9,
+    "customer_id": "cust_001",
+    "phone_number": "+919876543210",
+    "scheduled_time": "2026-08-24T10:00:00Z"
+  },
+  "db_persisted": true
+}

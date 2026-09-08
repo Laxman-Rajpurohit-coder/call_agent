@@ -1,0 +1,8 @@
+{"trace_id": "eval-comp-run-1787375647-comp_normal_07", "timestamp_ms": 1787375696939, "event": "call_started", "scenario_id": "comp_normal_07", "call_uuid": "432e2d42-2542-40ff-9a89-d3006f9476fb"}
+{"trace_id": "eval-comp-run-1787375647-comp_normal_07", "timestamp_ms": 1787375696942, "event": "audiosocket_connected", "host": "127.0.0.1", "port": 9092}
+{"trace_id": "eval-comp-run-1787375647-comp_normal_07", "timestamp_ms": 1787375696944, "event": "caller_speech_started", "frame_count": 35}
+{"trace_id": "eval-comp-run-1787375647-comp_normal_07", "timestamp_ms": 1787375698026, "event": "caller_speech_ended", "duration_s": 0.7}
+{"trace_id": "eval-comp-run-1787375647-comp_normal_07", "timestamp_ms": 1787375700096, "event": "agent_playback_started", "caller_speech_end_to_playback_start_ms": 2071, "call_start_to_playback_start_ms": 3155}
+{"trace_id": "eval-comp-run-1787375647-comp_normal_07", "timestamp_ms": 1787375705091, "event": "agent_playback_completed", "frames_received": 138, "total_duration_s": 2.76}
+{"trace_id": "eval-comp-run-1787375647-comp_normal_07", "timestamp_ms": 1787375705092, "event": "call_ended", "duration_ms": 8152}
+{"trace_id": "eval-comp-run-1787375647-comp_normal_07", "timestamp_ms": 1787375705123, "event": "stt_result", "text": "No.", "confidence": 0.0}

@@ -1,0 +1,14 @@
+id: heldout_interrupt_wait_please_001
+suite: held_out
+category: genuine_barge_in
+language: en
+transport: direct_audiosocket
+description: "Real caller interrupts agent with 'No, tell me the address please'"
+
+turns:
+  - audio_file: "evaluation/audio/held_out/heldout_interrupt_wait_please_001.wav"
+
+required_facts: ['Gandhi Pura', 'Balotra']
+forbidden_facts: []
+
+expected_tools: []

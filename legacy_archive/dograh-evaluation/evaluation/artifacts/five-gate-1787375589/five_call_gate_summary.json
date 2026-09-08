@@ -1,0 +1,111 @@
+{
+  "run_id": "five-gate-1787375589",
+  "gate_passed": true,
+  "voice_passed": 5,
+  "total_scenarios": 5,
+  "crm_tools_persisted": true,
+  "results": [
+    {
+      "scenario_id": "gate_01_normal_inbound",
+      "passed": true,
+      "tool_status": "SUCCESS",
+      "eval_result": {
+        "scenario_id": "gate_01_normal_inbound",
+        "passed": true,
+        "checks": {
+          "stt_not_empty": true,
+          "required_facts_present": true,
+          "speech_rate_wps": 2.99,
+          "agent_audio_generated": true,
+          "zero_playback_underruns": true,
+          "continuity_score_pass": true
+        },
+        "failure_reasons": [],
+        "caller_transcript": "No.",
+        "agent_response": "Understood. How may I assist you today?",
+        "agent_audio_duration_s": 2.34
+      }
+    },
+    {
+      "scenario_id": "gate_02_long_answer",
+      "passed": true,
+      "tool_status": "SUCCESS",
+      "eval_result": {
+        "scenario_id": "gate_02_long_answer",
+        "passed": true,
+        "checks": {
+          "stt_not_empty": true,
+          "required_facts_present": true,
+          "speech_rate_wps": 3.12,
+          "agent_audio_generated": true,
+          "zero_playback_underruns": true,
+          "continuity_score_pass": true
+        },
+        "failure_reasons": [],
+        "caller_transcript": "Hello, good morning.",
+        "agent_response": "Good morning! How can I assist you today?",
+        "agent_audio_duration_s": 2.56
+      }
+    },
+    {
+      "scenario_id": "gate_03_multi_turn",
+      "passed": true,
+      "tool_status": "SUCCESS",
+      "eval_result": {
+        "scenario_id": "gate_03_multi_turn",
+        "passed": true,
+        "checks": {
+          "stt_not_empty": true,
+          "required_facts_present": true,
+          "speech_rate_wps": 2.63,
+          "agent_audio_generated": true,
+          "zero_playback_underruns": true,
+          "continuity_score_pass": true
+        },
+        "failure_reasons": [],
+        "caller_transcript": "No.",
+        "agent_response": "Understood. How may I assist you further?",
+        "agent_audio_duration_s": 2.66
+      }
+    },
+    {
+      "scenario_id": "gate_04_noise_resilience",
+      "passed": true,
+      "tool_status": "SKIPPED",
+      "eval_result": {
+        "scenario_id": "gate_04_noise_resilience",
+        "passed": true,
+        "checks": {
+          "zero_hallucinations": true,
+          "silent_rejection": true,
+          "no_false_barge_in": true
+        },
+        "failure_reasons": [],
+        "caller_transcript": "",
+        "agent_response": "",
+        "agent_audio_duration_s": 0.0
+      }
+    },
+    {
+      "scenario_id": "gate_05_genuine_interruption",
+      "passed": true,
+      "tool_status": "SUCCESS",
+      "eval_result": {
+        "scenario_id": "gate_05_genuine_interruption",
+        "passed": true,
+        "checks": {
+          "stt_not_empty": true,
+          "required_facts_present": true,
+          "speech_rate_wps": 1.76,
+          "agent_audio_generated": true,
+          "zero_playback_underruns": true,
+          "continuity_score_pass": true
+        },
+        "failure_reasons": [],
+        "caller_transcript": "Actually, tell me the address.",
+        "agent_response": "The address is Gandhi Pura, Balotra, Barmer District, Rajasthan (PIN 344022).",
+        "agent_audio_duration_s": 6.24
+      }
+    }
+  ]
+}

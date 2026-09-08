@@ -1,0 +1,16 @@
+id: noise_only_003
+suite: barge_in_noise
+category: noise_only
+language: en
+transport: direct_audiosocket
+description: Ambient background noise (room_echo_003.wav) - must ignore and never
+  trigger false barge-in
+turns:
+- audio_file: evaluation/audio/synthetic/room_echo_003.wav
+expected:
+  agent_playback_completed: true
+  barge_in_detected: false
+  false_barge_in: false
+  queue_underflows: 0
+success_conditions:
+- silent_rejection

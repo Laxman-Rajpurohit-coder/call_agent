@@ -1,0 +1,11 @@
+{
+  "session_id": "dograh-sess-1684e0bc58",
+  "tool_invocation": {
+    "status": "SUCCESS",
+    "tag_id": 17,
+    "customer_id": "cust_001",
+    "tag": "urgent",
+    "reason": "Interruption occurred - priority tag"
+  },
+  "db_persisted": true
+}

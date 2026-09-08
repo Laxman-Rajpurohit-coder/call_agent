@@ -1,0 +1,192 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+  code, pre {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
+
+/* 🎨 Harmonious Color Gradients */
+.gradient-text-primary {
+  background: linear-gradient(135deg, #818cf8 0%, #c084fc 50%, #f472b6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.gradient-text-emerald {
+  background: linear-gradient(135deg, #34d399 0%, #2dd4bf 50%, #38bdf8 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* 💎 Glassmorphism & Panel Base Styles */
+.glass-panel {
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-card {
+  background: rgba(30, 41, 59, 0.6);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: all 0.2s ease-in-out;
+}
+
+/* 🌙 DARK MODE HIGH-CONTRAST TYPOGRAPHY FIX */
+.theme-dark,
+.dark,
+html.dark {
+  background-color: #0b0f19;
+  color: #f8fafc;
+}
+
+.theme-dark h1, .theme-dark h2, .theme-dark h3, .theme-dark h4, .theme-dark h5, .theme-dark h6,
+.dark h1, .dark h2, .dark h3, .dark h4, .dark h5, .dark h6 {
+  color: #ffffff !important;
+}
+
+.theme-dark p, .theme-dark span, .theme-dark div, .theme-dark label,
+.dark p, .dark span, .dark div, .dark label {
+  color: #e2e8f0;
+}
+
+/* Prevent accidental dark-on-dark text in dark mode */
+.theme-dark .text-slate-900,
+.theme-dark .text-slate-800,
+.theme-dark .text-slate-700,
+.dark .text-slate-900,
+.dark .text-slate-800,
+.dark .text-slate-700 {
+  color: #f8fafc !important;
+}
+
+.theme-dark .text-slate-600,
+.theme-dark .text-slate-500,
+.dark .text-slate-600,
+.dark .text-slate-500 {
+  color: #94a3b8 !important;
+}
+
+/* ☀️ LIGHT MODE HIGH-CONTRAST TYPOGRAPHY FIX */
+.theme-light,
+.light,
+html.light {
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+.theme-light h1, .theme-light h2, .theme-light h3, .theme-light h4, .theme-light h5, .theme-light h6,
+.light h1, .light h2, .light h3, .light h4, .light h5, .light h6 {
+  color: #0f172a !important;
+}
+
+.theme-light p, .theme-light span, .theme-light div, .theme-light label,
+.light p, .light span, .light div, .light label {
+  color: #1e293b !important;
+}
+
+.theme-light .glass-panel,
+.light .glass-panel {
+  background: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+}
+
+.theme-light .glass-card,
+.light .glass-card {
+  background: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+}
+
+.theme-light .bg-slate-900,
+.theme-light .bg-slate-950,
+.theme-light .bg-dark-900,
+.light .bg-slate-900,
+.light .bg-slate-950,
+.light .bg-dark-900 {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #e2e8f0 !important;
+}
+
+.theme-light .bg-slate-800,
+.theme-light .bg-slate-800\/50,
+.theme-light .bg-slate-800\/60,
+.light .bg-slate-800 {
+  background-color: #f1f5f9 !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+
+.theme-light input, .theme-light select, .theme-light textarea,
+.light input, .light select, .light textarea {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+
+.theme-light input::placeholder, .theme-light textarea::placeholder,
+.light input::placeholder, .light textarea::placeholder {
+  color: #64748b !important;
+}
+
+.theme-light select option,
+.light select option {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+.theme-light thead, .theme-light thead tr, .theme-light thead th,
+.light thead, .light thead tr, .light thead th {
+  background-color: #f1f5f9 !important;
+  color: #1e293b !important;
+  border-color: #e2e8f0 !important;
+}
+
+.theme-light .text-slate-100, .theme-light .text-slate-200, .theme-light .text-slate-300, .theme-light .text-white,
+.light .text-slate-100, .light .text-slate-200, .light .text-slate-300, .light .text-white {
+  color: #0f172a !important;
+}
+
+.theme-light .text-slate-400, .theme-light .text-slate-500, .theme-light .text-slate-600,
+.light .text-slate-400, .light .text-slate-500, .light .text-slate-600 {
+  color: #475569 !important;
+}
+
+.theme-light .border-slate-800, .theme-light .border-slate-700,
+.light .border-slate-800, .light .border-slate-700 {
+  border-color: #cbd5e1 !important;
+}
+
+/* 🎯 FILLED BUTTONS ALWAYS HAVE CRISP WHITE TEXT IN BOTH THEMES */
+.bg-emerald-600, .bg-emerald-600 *,
+.bg-emerald-500, .bg-emerald-500 *,
+.bg-indigo-600, .bg-indigo-600 *,
+.bg-indigo-500, .bg-indigo-500 *,
+.bg-brand-600, .bg-brand-600 *,
+.theme-light .bg-emerald-600, .theme-light .bg-emerald-600 *,
+.theme-light .bg-indigo-600, .theme-light .bg-indigo-600 *,
+.theme-light [class*="from-emerald"], .theme-light [class*="from-emerald"] *,
+.theme-light [class*="from-indigo"], .theme-light [class*="from-indigo"] * {
+  color: #ffffff !important;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.7);
+}

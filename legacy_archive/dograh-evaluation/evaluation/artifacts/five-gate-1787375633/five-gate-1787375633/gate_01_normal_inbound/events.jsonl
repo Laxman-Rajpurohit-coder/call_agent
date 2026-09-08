@@ -1,0 +1,8 @@
+{"trace_id": "eval-five-gate-1787375633-gate_01_normal_inbound", "timestamp_ms": 1787375633769, "event": "call_started", "scenario_id": "gate_01_normal_inbound", "call_uuid": "b539ac1d-7d21-474b-a3fb-eb09b841170a"}
+{"trace_id": "eval-five-gate-1787375633-gate_01_normal_inbound", "timestamp_ms": 1787375633773, "event": "audiosocket_connected", "host": "127.0.0.1", "port": 9092}
+{"trace_id": "eval-five-gate-1787375633-gate_01_normal_inbound", "timestamp_ms": 1787375633774, "event": "caller_speech_started", "frame_count": 35}
+{"trace_id": "eval-five-gate-1787375633-gate_01_normal_inbound", "timestamp_ms": 1787375634874, "event": "caller_speech_ended", "duration_s": 0.7}
+{"trace_id": "eval-five-gate-1787375633-gate_01_normal_inbound", "timestamp_ms": 1787375636056, "event": "agent_playback_started", "caller_speech_end_to_playback_start_ms": 1182, "call_start_to_playback_start_ms": 2284}
+{"trace_id": "eval-five-gate-1787375633-gate_01_normal_inbound", "timestamp_ms": 1787375638872, "event": "agent_playback_completed", "frames_received": 34, "total_duration_s": 0.68}
+{"trace_id": "eval-five-gate-1787375633-gate_01_normal_inbound", "timestamp_ms": 1787375638874, "event": "call_ended", "duration_ms": 5102}
+{"trace_id": "eval-five-gate-1787375633-gate_01_normal_inbound", "timestamp_ms": 1787375638897, "event": "stt_result", "text": "No.", "confidence": 0.0}

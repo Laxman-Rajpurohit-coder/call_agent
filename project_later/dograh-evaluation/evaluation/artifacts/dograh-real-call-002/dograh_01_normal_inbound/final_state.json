@@ -1,0 +1,8 @@
+{
+  "scenario_id": "dograh_01_normal_inbound",
+  "session_id": "dograh-sess-980b7f7d89",
+  "system_under_test": "dograh",
+  "passed": true,
+  "audio_duration_s": 6.44,
+  "tool_status": "SUCCESS"
+}

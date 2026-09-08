@@ -1,0 +1,14 @@
+id: heldout_quiet_speech_snr5_002
+suite: held_out
+category: quiet_speech_under_noise
+language: en
+transport: direct_audiosocket
+description: "Quiet caller asking for working hours at +5dB SNR over traffic rumble"
+
+turns:
+  - audio_file: "evaluation/audio/held_out/heldout_quiet_speech_snr5_002.wav"
+
+required_facts: ['9:00 AM', '5:00 PM']
+forbidden_facts: []
+
+expected_tools: []

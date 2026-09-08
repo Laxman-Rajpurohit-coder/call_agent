@@ -424,7 +424,12 @@ async def handle_audiosocket_connection(reader, writer):
 
     try:
         # Parse session ID / UUID from initial packet
-        header = await reader.readexactly(3)
+        try:
+            header = await reader.readexactly(3)
+        except (asyncio.IncompleteReadError, ConnectionResetError, OSError):
+            logger.debug("AudioSocket TCP connection closed before header bytes (probe/disconnect peer=%s)", peer)
+            return
+
         payload_type, payload_len = struct.unpack('!BH', header)
 
         if payload_type == 0x01:
@@ -438,6 +443,21 @@ async def handle_audiosocket_connection(reader, writer):
                 await reader.readexactly(payload_len)
 
         logger.info("Call session started with call_id=%s", call_id)
+
+        # Trigger tenant-aware CRM contact lookup/create & session start
+        try:
+            from services.crm.service import handle_call_start, handle_call_end
+            caller_phone = str(peer[0]) if (peer and not str(peer[0]).startswith("127.")) else "+919811223344"
+            crm_info = handle_call_start(
+                call_id=call_id,
+                from_number=caller_phone,
+                to_number="+918000000700",
+                direction="inbound",
+                provider="plivo"
+            )
+            logger.info("CRM_CALL_STARTED call_id=%s contact_id=%s", call_id, crm_info.get("contact_id"))
+        except Exception as crm_err:
+            logger.error("CRM call start hook warning: %s", crm_err)
 
         # Verify mapping exists or can be recovered (supports both Asterisk PBX and Direct AudioSocket test runners)
         try:
@@ -725,6 +745,16 @@ async def handle_audiosocket_connection(reader, writer):
     except Exception:
         logger.error("Error establishing call connection:", exc_info=True)
     finally:
+        try:
+            from services.crm.service import handle_call_end
+            if 'handler' in locals() and handler:
+                handle_call_end(
+                    call_id=call_id,
+                    transcript_history=handler.conversation_history,
+                    status="completed"
+                )
+        except Exception as crm_end_err:
+            logger.error("CRM call end hook error: %s", crm_end_err)
         await _release_call()
         try:
             writer.close()
