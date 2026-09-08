@@ -10,15 +10,20 @@ const TAB_SEO_MAP: Record<string, { title: string; description: string; canonica
     description: 'Real-time overview of active SIP calls, microservices cluster health, human handoffs, and voice QA metrics.',
     canonical: 'https://superfone.ai/#overview'
   },
+  'org-dashboard': {
+    title: 'Organization Dashboard | Superfone AI Voice Hub',
+    description: 'High‑level system health, campaign stats, and team productivity overview.',
+    canonical: 'https://superfone.ai/#org-dashboard'
+  },
   'team': {
     title: 'Team Activity & Agent Progress | Superfone AI Voice Ops',
     description: 'Track sales agent call volume, daily call target progress, talk time, active status, and individual agent performance analytics.',
     canonical: 'https://superfone.ai/#team'
   },
-  'agent-workspace': {
-    title: 'Agent Softphone Workspace | Superfone Telephony',
-    description: 'Sales Agent desktop workspace with softphone dialer, SIP extension status, active call management, and lead details.',
-    canonical: 'https://superfone.ai/#agent-workspace'
+  'agent-panel': {
+    title: 'Agent Softphone Panel | Superfone Telephony',
+    description: 'Sales Agent desktop panel with softphone dialer, SIP extension status, active call management, and lead details.',
+    canonical: 'https://superfone.ai/#agent-panel'
   },
   'agent-login': {
     title: 'Sales Agent Login & Portal | Superfone AI Telephony',

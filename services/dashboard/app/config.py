@@ -1,4 +1,35 @@
 import os
+from pathlib import Path
+
+WORKSPACE_DIR = str(Path(__file__).resolve().parents[3])
+LEGACY_DIR = r"c:\daily_works\superfone_call"
+
+# Multi-Path .env Resolution (AGENTS.md Rule 4)
+for env_candidate in (
+    os.path.join(WORKSPACE_DIR, ".env"),
+    os.path.join(LEGACY_DIR, ".env"),
+    os.path.join(str(Path(__file__).parent), ".env"),
+    os.path.join(str(Path(__file__).parent.parent), ".env"),
+):
+    if os.path.exists(env_candidate):
+        try:
+            with open(env_candidate, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and "=" in line and not line.startswith("#"):
+                        k, v = line.split("=", 1)
+                        k_clean = k.strip()
+                        if k_clean not in os.environ:
+                            os.environ[k_clean] = v.strip().strip('"').strip("'")
+        except Exception:
+            pass
+
+def _resolve_first_existing(*rel_parts) -> str:
+    for base in (WORKSPACE_DIR, LEGACY_DIR):
+        target = os.path.join(base, *rel_parts)
+        if os.path.exists(target):
+            return target
+    return os.path.join(WORKSPACE_DIR, *rel_parts)
 
 class Settings:
     PROJECT_NAME: str = "Superfone AI Voice Operations & Campaign Platform"
@@ -9,7 +40,7 @@ class Settings:
     HOST: str = "0.0.0.0"
     
     # DB
-    SQLITE_DB_PATH: str = r"c:\daily_works\superfone_call\voice_crm.db"
+    SQLITE_DB_PATH: str = _resolve_first_existing("voice_crm.db")
     DATABASE_URL: str = os.environ.get("DATABASE_URL", f"sqlite:///{SQLITE_DB_PATH}")
     
     # Microservice Endpoints
@@ -20,10 +51,10 @@ class Settings:
     AUDIO_STUDIO_URL: str = os.environ.get("AUDIO_STUDIO_URL", "http://127.0.0.1:9096")
     
     # Log File Path
-    CALL_GATEWAY_LOG: str = r"c:\daily_works\superfone_call\call_gateway.log"
+    CALL_GATEWAY_LOG: str = _resolve_first_existing("call_gateway.log")
     
     # Evaluation & Load Test Paths
-    EVAL_REPORTS_DIR: str = r"c:\daily_works\superfone_call\evaluation\reports\generated"
-    LOAD_TESTS_DIR: str = r"c:\daily_works\superfone_call"
+    EVAL_REPORTS_DIR: str = _resolve_first_existing("evaluation", "reports", "generated")
+    LOAD_TESTS_DIR: str = WORKSPACE_DIR if os.path.exists(WORKSPACE_DIR) else LEGACY_DIR
 
 settings = Settings()

@@ -3,18 +3,34 @@ import re
 import numpy as np
 from scipy.signal import resample_poly
 
+from pathlib import Path
+
 # Ensure np.load allows loading the voices dictionary archive
 _orig_load = np.load
 np.load = lambda *args, **kwargs: _orig_load(*args, **{**kwargs, 'allow_pickle': True})
 
 from kokoro_onnx import Kokoro
 
-MODELS_DIR = r"c:\daily_works\superfone_call\models"
-KOKORO_MODEL_PATH = os.path.join(MODELS_DIR, "kokoro-v0_19.onnx")
-KOKORO_VOICES_PATH = os.path.join(MODELS_DIR, "voices.bin")
+BASE_DIR = Path(__file__).parent.parent.parent
+POSSIBLE_MODEL_DIRS = [
+    BASE_DIR / "models",
+    Path(r"c:\daily_works\superfone_call\models")
+]
+
+def resolve_model_files():
+    for d in POSSIBLE_MODEL_DIRS:
+        m_path = d / "kokoro-v0_19.onnx"
+        v_path = d / "voices.bin"
+        if m_path.exists() and v_path.exists():
+            return str(m_path), str(v_path)
+    return str(POSSIBLE_MODEL_DIRS[0] / "kokoro-v0_19.onnx"), str(POSSIBLE_MODEL_DIRS[0] / "voices.bin")
+
+KOKORO_MODEL_PATH, KOKORO_VOICES_PATH = resolve_model_files()
 
 class KokoroTTSEngine:
-    def __init__(self, model_path: str = KOKORO_MODEL_PATH, voices_path: str = KOKORO_VOICES_PATH):
+    def __init__(self, model_path: str = None, voices_path: str = None):
+        if not model_path or not voices_path:
+            model_path, voices_path = resolve_model_files()
         self.model_path = model_path
         self.voices_path = voices_path
         self.kokoro = None

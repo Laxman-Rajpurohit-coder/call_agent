@@ -1,0 +1,103 @@
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Account {
+  id           String        @id @default(uuid())
+  name         String
+  phone        String?
+  workingHours String        @default("09:00 - 20:00")
+  agentName    String        @default("Riya")
+  voiceName    String        @default("en-IN-Wavenet-A")
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  users        User[]
+  contacts     Contact[]
+  leads        Lead[]
+  activities   Activity[]
+  appointments Appointment[]
+}
+
+model User {
+  id        String   @id @default(uuid())
+  accountId String
+  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  email     String   @unique
+  password  String
+  name      String
+  role      String   @default("AGENT")
+  createdAt DateTime @default(now())
+}
+
+model Contact {
+  id           String        @id @default(uuid())
+  accountId    String
+  account      Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  name         String
+  phone        String
+  email        String?
+  city         String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  leads        Lead[]
+  activities   Activity[]
+  appointments Appointment[]
+
+  @@unique([accountId, phone])
+}
+
+model Lead {
+  id            String        @id @default(uuid())
+  accountId     String
+  account       Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  contactId     String?
+  contact       Contact?      @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  name          String
+  phone         String
+  need          String
+  preferredTime String?
+  status        String        @default("NEW")
+  source        String        @default("INBOUND_AI_CALL")
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  activities    Activity[]
+  appointments  Appointment[]
+}
+
+model Activity {
+  id           String   @id @default(uuid())
+  accountId    String
+  account      Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  contactId    String?
+  contact      Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  leadId       String?
+  lead         Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  type         String   @default("CALL")
+  direction    String   @default("INBOUND")
+  durationSec  Int      @default(0)
+  recordingUrl String?
+  transcript   String?
+  summary      String?
+  intent       String?
+  createdAt    DateTime @default(now())
+}
+
+model Appointment {
+  id        String   @id @default(uuid())
+  accountId String
+  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  contactId String?
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  leadId    String?
+  lead      Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  date      String
+  time      String
+  service   String
+  status    String   @default("SCHEDULED")
+  createdAt DateTime @default(now())
+}

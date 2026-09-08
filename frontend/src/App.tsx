@@ -17,6 +17,9 @@ const TasksPage = lazy(() => import('./pages/TasksPage').then(m => ({ default: m
 const TeamPage = lazy(() => import('./pages/TeamPage').then(m => ({ default: m.TeamPage })));
 const AgentLoginPage = lazy(() => import('./pages/AgentLoginPage').then(m => ({ default: m.AgentLoginPage })));
 const AgentDashboardPage = lazy(() => import('./pages/AgentDashboardPage').then(m => ({ default: m.AgentDashboardPage })));
+// New alias pages for distinct routes
+const OrgDashboardPage = lazy(() => import('./pages/OverviewPage').then(m => ({ default: m.OverviewPage })));
+const AgentPanelPage = lazy(() => import('./pages/AgentDashboardPage').then(m => ({ default: m.AgentDashboardPage })));
 
 const PageLoader: React.FC = () => (
   <div className="flex flex-col items-center justify-center min-h-[350px] p-8 space-y-4">
@@ -31,7 +34,7 @@ const PageLoader: React.FC = () => (
 );
 
 const VALID_TABS = [
-  'overview', 'agent-workspace', 'agent-login', 'live-monitor', 'crm', 'tasks',
+  'org-dashboard', 'agent-panel', 'agent-login', 'live-monitor', 'crm', 'tasks',
   'team', 'campaigns', 'voice-studio', 'evaluations', 'load-testing', 'settings'
 ];
 
@@ -42,7 +45,7 @@ const getInitialTab = (): string => {
     const saved = localStorage.getItem('superfone_active_tab');
     if (saved && VALID_TABS.includes(saved)) return saved;
   }
-  return 'overview';
+  return 'org-dashboard';
 };
 
 const getInitialTheme = (): 'dark' | 'light' => {
@@ -83,7 +86,7 @@ export const App: React.FC = () => {
     if (typeof window !== 'undefined') {
       localStorage.setItem('superfone_agent_session', JSON.stringify(session));
     }
-    setActiveTab('agent-workspace');
+    setActiveTab('agent-panel');
   }, [setActiveTab]);
 
   const handleLogoutAgent = useCallback(() => {
@@ -98,7 +101,7 @@ export const App: React.FC = () => {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('superfone_agent_session');
     }
-    setActiveTab('overview');
+    setActiveTab('org-dashboard');
   }, [agentSession, setActiveTab]);
 
   const handleUpdateAgentStatus = useCallback((newStatus: AgentStatusType) => {
@@ -220,10 +223,10 @@ export const App: React.FC = () => {
         const promises: Promise<Response | null>[] = [fetch('/api/v1/overview', fetchOpts).catch(() => null)];
         const keys: string[] = ['overview'];
 
-        if (currentTab === 'crm' || currentTab === 'team' || currentTab === 'agent-workspace') {
+        if (currentTab === 'crm' || currentTab === 'team' || currentTab === 'agent-panel') {
           promises.push(fetch('/api/v1/calls', fetchOpts).catch(() => null), fetch('/api/v1/contacts', fetchOpts).catch(() => null));
           keys.push('calls', 'contacts');
-        } else if (currentTab === 'live-monitor' || currentTab === 'overview') {
+        } else if (currentTab === 'live-monitor' || currentTab === 'org-dashboard') {
           promises.push(fetch('/api/v1/calls', fetchOpts).catch(() => null));
           keys.push('calls');
         } else if (currentTab === 'campaigns') {
@@ -380,8 +383,26 @@ export const App: React.FC = () => {
     );
   }
 
-  return (
-    <div className={`flex h-screen overflow-hidden ${theme === 'dark' ? 'theme-dark bg-dark-900 text-slate-100' : 'theme-light bg-slate-50 text-slate-900'}`}>
+    // Separate layout for Agent Panel – no sidebar/header
+    if (activeTab === 'agent-panel') {
+      return (
+        <Suspense fallback={<PageLoader />}>
+          {agentSession ? (
+            <AgentDashboardPage
+              session={agentSession}
+              onUpdateStatus={handleUpdateAgentStatus}
+              onLogout={handleLogoutAgent}
+              calls={calls}
+              contacts={contacts}
+              onRefreshData={fetchData}
+            />
+          ) : (
+            <AgentLoginPage onLoginSuccess={handleAgentLoginSuccess} />
+          )}
+        </Suspense>
+      );
+    }
+    return (
       <SEOHead activeTab={activeTab} />
       {/* Sidebar with Mobile Drawer */}
       <Sidebar
@@ -405,8 +426,8 @@ export const App: React.FC = () => {
 
         <main className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 space-y-4 md:space-y-6">
           <Suspense fallback={<PageLoader />}>
-            {activeTab === 'overview' && <OverviewPage overview={overview} logs={logs} />}
-            {activeTab === 'agent-workspace' && (
+            {activeTab === 'org-dashboard' && <OrgDashboardPage overview={overview} logs={logs} />}
+            {activeTab === 'agent-panel' && (
               agentSession ? (
                 <AgentDashboardPage
                   session={agentSession}

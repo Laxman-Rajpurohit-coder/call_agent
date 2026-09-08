@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Superfone AI CRM — Smart Voice Agent & Lead Management</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+  <!-- Live Screen Pop Banner for Warm Handoff -->
+  <div id="screenPopBanner" class="screen-pop-banner hidden">
+    <div class="pop-content">
+      <div class="pop-badge">🔔 LIVE HUMAN HANDOFF</div>
+      <div class="pop-details">
+        <strong id="popCallerName">Rahul Sharma (+91-9898989898)</strong>
+        <p id="popIntent">Need: Root Canal Consultation • Preferred: Tomorrow 5 PM</p>
+      </div>
+      <button onclick="dismissPop()" class="pop-btn">Answer Call</button>
+    </div>
+  </div>
+
+  <!-- Authentication View -->
+  <div id="authContainer" class="auth-wrapper">
+    <div class="auth-card">
+      <div class="brand-logo">
+        <span class="logo-icon">🎙️</span>
+        <h2>Smile Dental AI CRM</h2>
+        <p>Log in to access your clinic leads and call records</p>
+      </div>
+      <form id="loginForm">
+        <div class="form-group">
+          <label>Email Address</label>
+          <input type="email" id="loginEmail" value="admin@smiledental.com" required placeholder="admin@smiledental.com">
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="loginPassword" value="admin123" required placeholder="••••••••">
+        </div>
+        <button type="submit" class="primary-btn full-width">Sign In to Dashboard</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Main CRM Dashboard View -->
+  <div id="dashboardContainer" class="dashboard-wrapper hidden">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-icon">⚡</span>
+        <div>
+          <h3>Superfone AI</h3>
+          <small>Smile Dental Clinic</small>
+        </div>
+      </div>
+
+      <nav class="nav-menu">
+        <button class="nav-item active" onclick="switchTab('leadsTab')">
+          <span class="icon">👥</span> Leads & Appointments
+        </button>
+        <button class="nav-item" onclick="switchTab('callsTab')">
+          <span class="icon">📞</span> AI Call Logs
+        </button>
+        <button class="nav-item" onclick="switchTab('simulatorTab')">
+          <span class="icon">🤖</span> AI Call Simulator
+        </button>
+      </nav>
+
+      <div class="user-profile">
+        <div class="avatar">DS</div>
+        <div class="user-info">
+          <strong id="userName">Dr. Sharma</strong>
+          <small>Clinic Owner</small>
+        </div>
+        <button onclick="logout()" class="logout-btn" title="Logout">🚪</button>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      <!-- Header -->
+      <header class="top-header">
+        <div>
+          <h1 id="pageTitle">Leads & Appointments</h1>
+          <p>Real-time incoming leads captured by Riya (AI Receptionist)</p>
+        </div>
+        <div class="header-actions">
+          <span class="status-indicator online">
+            <span class="dot"></span> AI Receptionist Active (+91-9876543210)
+          </span>
+          <button onclick="fetchDashboardData()" class="secondary-btn">🔄 Refresh</button>
+        </div>
+      </header>
+
+      <!-- Metric Stats Bar -->
+      <section class="metrics-grid">
+        <div class="metric-card">
+          <span class="card-icon blue">📋</span>
+          <div>
+            <span class="metric-value" id="statTotalLeads">0</span>
+            <span class="metric-label">Total Captured Leads</span>
+          </div>
+        </div>
+        <div class="metric-card">
+          <span class="card-icon green">📞</span>
+          <div>
+            <span class="metric-value" id="statTotalCalls">0</span>
+            <span class="metric-label">AI Calls Handled</span>
+          </div>
+        </div>
+        <div class="metric-card">
+          <span class="card-icon purple">📅</span>
+          <div>
+            <span class="metric-value" id="statBooked">0</span>
+            <span class="metric-label">Appointments Booked</span>
+          </div>
+        </div>
+        <div class="metric-card">
+          <span class="card-icon orange">⚡</span>
+          <div>
+            <span class="metric-value">100%</span>
+            <span class="metric-label">AI Resolution Rate</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 1: LEADS MANAGEMENT -->
+      <section id="leadsTab" class="tab-content active">
+        <div class="table-container">
+          <div class="table-header">
+            <h3>Captured Customer Leads</h3>
+            <input type="text" id="leadSearchInput" onkeyup="filterLeads()" placeholder="🔍 Search by name, phone, or service..." class="search-input">
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Customer Name</th>
+                <th>Phone Number</th>
+                <th>Service Requested</th>
+                <th>Preferred Slot</th>
+                <th>Captured At</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="leadsTableBody">
+              <tr>
+                <td colspan="7" class="empty-state">Loading leads data...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- TAB 2: AI CALL LOGS -->
+      <section id="callsTab" class="tab-content hidden">
+        <div class="table-container">
+          <div class="table-header">
+            <h3>Call Transcripts & Audio Recordings</h3>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Date & Time</th>
+                <th>Caller</th>
+                <th>Duration</th>
+                <th>Intent</th>
+                <th>AI Call Summary</th>
+                <th>Audio Recording</th>
+                <th>Transcript</th>
+              </tr>
+            </thead>
+            <tbody id="callsTableBody">
+              <tr>
+                <td colspan="7" class="empty-state">Loading call logs...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- TAB 3: LIVE AI CALL SIMULATOR -->
+      <section id="simulatorTab" class="tab-content hidden">
+        <div class="simulator-card">
+          <h3>Test AI Voice Call Pipeline & Instant Lead Generation</h3>
+          <p>Simulate an incoming patient call to verify STT, LLM intent detection, and automatic CRM lead creation.</p>
+          
+          <div class="form-grid">
+            <div class="form-group">
+              <label>Caller Name</label>
+              <input type="text" id="simName" value="Priya Verma">
+            </div>
+            <div class="form-group">
+              <label>Caller Phone</label>
+              <input type="text" id="simPhone" value="+91-9876501234">
+            </div>
+            <div class="form-group">
+              <label>Requested Service</label>
+              <input type="text" id="simNeed" value="Teeth Whitening & Scaling">
+            </div>
+            <div class="form-group">
+              <label>Preferred Date/Time</label>
+              <input type="text" id="simTime" value="Tomorrow 6:00 PM">
+            </div>
+          </div>
+
+          <button onclick="simulateAiCall()" class="primary-btn large-btn">
+            ▶️ Trigger Simulated Inbound AI Call
+          </button>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Transcript Modal -->
+  <div id="transcriptModal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Call Transcript</h3>
+        <button onclick="closeModal()" class="close-btn">✖</button>
+      </div>
+      <div class="modal-body" id="modalTranscriptBody">
+        <!-- Transcript lines will be populated dynamically -->
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

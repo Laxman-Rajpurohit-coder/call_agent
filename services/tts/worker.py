@@ -378,6 +378,33 @@ def generate_tts_and_resample(text: str, enqueue_time: float, requested_voice: s
             except Exception as p_err:
                 print(f"[TTS Worker] Piper fallback error: {p_err}", flush=True)
 
+    # 4. Fail-Safe EdgeTTS Cloud Neural Fallback (Guarantees Audio Generation)
+    if not audio_bytes and clean_text:
+        try:
+            import edge_tts
+            import io
+            from pydub import AudioSegment
+
+            is_hindi = bool(re.search(r'[\u0900-\u097F]', clean_text))
+            edge_voice = "hi-IN-SwaraNeural" if is_hindi else "en-US-AvaNeural"
+            
+            async def run_edge():
+                c = edge_tts.Communicate(clean_text, edge_voice)
+                mp3_b = bytearray()
+                async for chunk in c.stream():
+                    if chunk["type"] == "audio":
+                        mp3_b.extend(chunk["data"])
+                return bytes(mp3_b)
+
+            mp3_data = asyncio.run(run_edge())
+            if mp3_data:
+                audio_seg = AudioSegment.from_file(io.BytesIO(mp3_data), format="mp3")
+                audio_seg = audio_seg.set_frame_rate(8000).set_channels(1).set_sample_width(2)
+                audio_bytes = audio_seg.raw_data
+                print(f"[TTS Worker] EdgeTTS Fallback produced {len(audio_bytes)} bytes PCM!", flush=True)
+        except Exception as edge_err:
+            print(f"[TTS Worker] EdgeTTS fallback error: {edge_err}", flush=True)
+
     inference_ms = (time.perf_counter() - t_infer) * 1000.0
     print(f"[TTS STEP 2: NEURAL SYNTHESIS COMPLETE] Inference Time: {inference_ms:.1f}ms | Produced: {len(audio_bytes)} bytes (8000Hz PCM16 Mono)", flush=True)
 

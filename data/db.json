@@ -1,0 +1,142 @@
+{
+  "accounts": [
+    {
+      "id": "id_zkb2eg7t9_1788856730635",
+      "name": "Smile Dental Clinic",
+      "phone": "+91-9876543210",
+      "workingHours": "09:00 AM - 08:00 PM",
+      "agentName": "Riya AI Receptionist",
+      "voiceName": "Deepgram Aura Aditi",
+      "createdAt": "2026-09-08T08:38:50.635Z",
+      "updatedAt": "2026-09-08T08:38:50.635Z"
+    }
+  ],
+  "users": [
+    {
+      "id": "id_rzmpfw38f_1788856730636",
+      "accountId": "id_zkb2eg7t9_1788856730635",
+      "name": "Dr. Sharma (Admin)",
+      "email": "admin@smiledental.com",
+      "password": "admin123",
+      "role": "ADMIN",
+      "createdAt": "2026-09-08T08:38:50.636Z"
+    },
+    {
+      "id": "id_1dadvya8i_1788857245303",
+      "accountId": "id_zkb2eg7t9_1788856730635",
+      "name": "Agent Vikas",
+      "email": "agent@smiledental.com",
+      "password": "agent123",
+      "role": "AGENT",
+      "createdAt": "2026-09-08T08:47:25.303Z"
+    }
+  ],
+  "contacts": [
+    {
+      "id": "id_f8p8fcl6l_1788856840727",
+      "accountId": "id_zkb2eg7t9_1788856730635",
+      "name": "Rahul Sharma",
+      "phone": "+91-9876543210",
+      "email": null,
+      "city": null,
+      "createdAt": "2026-09-08T08:40:40.727Z",
+      "updatedAt": "2026-09-08T08:40:40.727Z"
+    },
+    {
+      "id": "id_q8nocgyti_1788856869733",
+      "accountId": "id_zkb2eg7t9_1788856730635",
+      "name": "Rahul Sharma",
+      "phone": "+91-9898989898",
+      "email": null,
+      "city": null,
+      "createdAt": "2026-09-08T08:41:09.733Z",
+      "updatedAt": "2026-09-08T08:41:20.478Z"
+    }
+  ],
+  "leads": [
+    {
+      "id": "id_za4z5ltrk_1788856880478",
+      "accountId": "id_zkb2eg7t9_1788856730635",
+      "contactId": "id_q8nocgyti_1788856869733",
+      "name": "Rahul Sharma",
+      "phone": "+91-9898989898",
+      "need": "Dental Cleaning",
+      "preferredTime": "Tomorrow 5:00 PM",
+      "status": "NEW",
+      "source": "INBOUND_AI_CALL",
+      "createdAt": "2026-09-08T08:41:20.478Z",
+      "updatedAt": "2026-09-08T08:41:20.478Z"
+    },
+    {
+      "id": "id_eagynxq4n_1788856869734",
+      "accountId": "id_zkb2eg7t9_1788856730635",
+      "contactId": "id_q8nocgyti_1788856869733",
+      "name": "Inbound Caller",
+      "phone": "+91-9898989898",
+      "need": "Consultation",
+      "preferredTime": "Not Specified",
+      "status": "NEW",
+      "source": "INBOUND_AI_CALL",
+      "createdAt": "2026-09-08T08:41:09.734Z",
+      "updatedAt": "2026-09-08T08:41:09.734Z"
+    },
+    {
+      "id": "id_sekrbsz1q_1788856840728",
+      "accountId": "id_zkb2eg7t9_1788856730635",
+      "contactId": "id_f8p8fcl6l_1788856840727",
+      "name": "Rahul Sharma",
+      "phone": "+91-9876543210",
+      "need": "Root Canal Treatment",
+      "preferredTime": "Tomorrow 5:00 PM",
+      "status": "NEW",
+      "source": "INBOUND_AI_CALL",
+      "createdAt": "2026-09-08T08:40:40.728Z",
+      "updatedAt": "2026-09-08T08:40:40.728Z"
+    }
+  ],
+  "activities": [
+    {
+      "id": "id_6bzurr6p6_1788856880480",
+      "accountId": "id_zkb2eg7t9_1788856730635",
+      "leadId": "id_za4z5ltrk_1788856880478",
+      "contactId": "id_q8nocgyti_1788856869733",
+      "type": "CALL",
+      "direction": "INBOUND",
+      "durationSec": 32,
+      "recordingUrl": null,
+      "transcript": "\n    AI: Hello, thanks for calling Smile Dental Clinic. I am Riya, how can I help you today?\n    Caller: Hi, my name is Rahul Sharma. I want to book an appointment for dental cleaning.\n    AI: Sure Rahul! We have slots available tomorrow at 5:00 PM or 6:30 PM. Which one works for you?\n    Caller: Tomorrow 5:00 PM works great.\n    AI: Perfect, I have scheduled your appointment for tomorrow at 5:00 PM. Is there anything else?\n    Caller: No, that's all. Thank you!\n    ",
+      "summary": "Rahul Sharma called to book a dental cleaning appointment. The appointment was successfully scheduled for tomorrow at 5:00 PM.",
+      "intent": "book_appointment",
+      "createdAt": "2026-09-08T08:41:20.480Z"
+    },
+    {
+      "id": "id_bvmszqwkj_1788856869744",
+      "accountId": "id_zkb2eg7t9_1788856730635",
+      "leadId": "id_eagynxq4n_1788856869734",
+      "contactId": "id_q8nocgyti_1788856869733",
+      "type": "CALL",
+      "direction": "INBOUND",
+      "durationSec": 32,
+      "recordingUrl": null,
+      "transcript": "\n    AI: Hello, thanks for calling Smile Dental Clinic. I am Riya, how can I help you today?\n    Caller: Hi, my name is Rahul Sharma. I want to book an appointment for dental cleaning.\n    AI: Sure Rahul! We have slots available tomorrow at 5:00 PM or 6:30 PM. Which one works for you?\n    Caller: Tomorrow 5:00 PM works great.\n    AI: Perfect, I have scheduled your appointment for tomorrow at 5:00 PM. Is there anything else?\n    Caller: No, that's all. Thank you!\n    ",
+      "summary": "AI handled call inquiry.",
+      "intent": "general_query",
+      "createdAt": "2026-09-08T08:41:09.744Z"
+    },
+    {
+      "id": "id_vsufb42ka_1788856850536",
+      "accountId": "id_zkb2eg7t9_1788856730635",
+      "leadId": null,
+      "contactId": "id_f8p8fcl6l_1788856840727",
+      "type": "CALL",
+      "direction": "INBOUND",
+      "durationSec": 35,
+      "recordingUrl": null,
+      "transcript": "AI: Hello, Smile Dental Clinic! I am Riya. How can I help?\nCaller: Hi, I need a root canal appointment.\nAI: Sure Rahul, tomorrow 5 PM is available. Shall I confirm?\nCaller: Yes please.",
+      "summary": "Caller Rahul Sharma booked Root Canal appointment for tomorrow 5 PM.",
+      "intent": "book_appointment",
+      "createdAt": "2026-09-08T08:40:50.536Z"
+    }
+  ],
+  "appointments": []
+}

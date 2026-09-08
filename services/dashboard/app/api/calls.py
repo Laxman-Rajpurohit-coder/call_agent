@@ -36,14 +36,17 @@ async def serve_call_audio(wav_name: str):
     """Serves recorded telephony audio WAV files for turn-by-turn live playback."""
     import os
     from fastapi.responses import FileResponse
-    safe_name = os.path.basename(wav_name)
-    file_path = os.path.join(r"c:\daily_works\superfone_call", safe_name)
-    if not os.path.exists(file_path):
-        artifact_path = os.path.join(r"C:\Users\msanj\.gemini\antigravity\brain\8fd7d2de-313c-4386-802f-400cc03a7507", safe_name)
-        if os.path.exists(artifact_path):
-            file_path = artifact_path
-        else:
-            raise HTTPException(status_code=404, detail="Audio file not found")
+    from pathlib import Path
+    workspace_dir = str(Path(__file__).resolve().parents[4])
+    candidates = [
+        os.path.join(workspace_dir, safe_name),
+        os.path.join(workspace_dir, "recordings", safe_name),
+        os.path.join(r"c:\daily_works\superfone_call", safe_name),
+        os.path.join(r"c:\daily_works\superfone_call", "recordings", safe_name),
+    ]
+    file_path = next((p for p in candidates if os.path.exists(p)), None)
+    if not file_path:
+        raise HTTPException(status_code=404, detail="Audio file not found")
     return FileResponse(file_path, media_type="audio/wav")
 
 @router.get("/{call_id}", response_model=CallSessionResponse)

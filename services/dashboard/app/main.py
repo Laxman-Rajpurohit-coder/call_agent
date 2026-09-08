@@ -2,14 +2,20 @@ import os
 import sys
 import asyncio
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from pathlib import Path
 
-ROOT_DIR = r"c:\daily_works\superfone_call"
-if ROOT_DIR not in sys.path:
-    sys.path.insert(0, ROOT_DIR)
+WORKSPACE_DIR = str(Path(__file__).resolve().parents[3])
+LEGACY_DIR = r"c:\daily_works\superfone_call"
+
+for d in (WORKSPACE_DIR, LEGACY_DIR):
+    if os.path.exists(d) and d not in sys.path:
+        sys.path.insert(0, d)
+
+ROOT_DIR = WORKSPACE_DIR if os.path.exists(WORKSPACE_DIR) else LEGACY_DIR
 
 from services.dashboard.app.config import settings
 from services.dashboard.app.database import engine, Base, run_migrations
@@ -82,13 +88,29 @@ app.add_middleware(
 # API V1 Router
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
+# Root WebSocket for Live Call Events & Real-Time Logs
+from services.dashboard.app.services.event_bus import manager
+from fastapi import WebSocket, WebSocketDisconnect
+
+@app.websocket("/ws/live")
+async def root_ws_live(websocket: WebSocket):
+    await manager.connect(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+
 # Serve Call Recordings Static Directory
 RECORDINGS_DIR = os.path.join(ROOT_DIR, "recordings")
 os.makedirs(RECORDINGS_DIR, exist_ok=True)
 app.mount("/recordings", StaticFiles(directory=RECORDINGS_DIR), name="recordings")
 
 # Serve Frontend Static Build
-FRONTEND_DIST = os.path.join(ROOT_DIR, "frontend", "dist")
+FRONTEND_DIST = os.path.join(WORKSPACE_DIR, "frontend", "dist")
+if not os.path.exists(FRONTEND_DIST):
+    FRONTEND_DIST = os.path.join(LEGACY_DIR, "frontend", "dist")
+
 if os.path.exists(FRONTEND_DIST):
     app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIST, "assets")), name="assets")
 

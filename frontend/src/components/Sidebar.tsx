@@ -10,8 +10,8 @@ interface SidebarProps {
 
 export const Sidebar: React.FC<SidebarProps> = React.memo(({ activeTab, setActiveTab, isOpen = false, onClose }) => {
   const navItems = [
-    { id: 'overview', label: 'Operations Overview', icon: LayoutDashboard },
-    { id: 'agent-workspace', label: 'Agent Workspace', icon: UserCheck },
+    { id: 'org-dashboard', label: 'Organization Dashboard', icon: LayoutDashboard },
+    { id: 'agent-panel', label: 'Agent Panel', icon: UserCheck },
     { id: 'live-monitor', label: 'Live Call Monitor', icon: Radio },
     { id: 'crm', label: 'Voice CRM & Calls', icon: Users },
     { id: 'tasks', label: 'To-Do & Tasks', icon: CheckSquare },
