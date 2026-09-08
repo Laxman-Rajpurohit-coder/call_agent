@@ -29,4 +29,5 @@ scratch/
 !evaluation/audio/reference/**/*.wav
 !evaluation/audio/synthetic/
 !evaluation/audio/synthetic/**/*.wav
-echo "legacy_archive/models/whisper_base/" >> .gitignore
+legacy_archive/models/whisper_base/
+models/whisper_base/
