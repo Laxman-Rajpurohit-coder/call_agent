@@ -31,3 +31,4 @@ scratch/
 !evaluation/audio/synthetic/**/*.wav
 legacy_archive/models/whisper_base/
 models/whisper_base/
+project_later/models/whisper_base/
