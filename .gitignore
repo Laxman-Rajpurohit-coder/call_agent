@@ -12,6 +12,9 @@ call_gateway.log
 MicroSIP-3.22.12/
 piper/
 storage/*.db
+node_modules/
+.vite/
+frontend/node_modules/
 
 # Generated evaluation artifacts
 evaluation/artifacts/

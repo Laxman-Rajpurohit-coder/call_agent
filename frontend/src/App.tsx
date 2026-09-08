@@ -403,8 +403,9 @@ export const App: React.FC = () => {
       );
     }
     return (
-      <SEOHead activeTab={activeTab} />
-      {/* Sidebar with Mobile Drawer */}
+      <div className="flex h-screen bg-slate-950 text-slate-100 antialiased overflow-hidden">
+        <SEOHead activeTab={activeTab} />
+        {/* Sidebar with Mobile Drawer */}
       <Sidebar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
