@@ -341,28 +341,18 @@ class AudioStudioServer:
             traceback.print_exc()
             return web.json_response({"error": str(ex)}, status=500)
 
-    async def start(self):
+    def run(self):
         app = web.Application()
         app.router.add_get("/", self.handle_index)
         app.router.add_get("/api/config", self.handle_get_config)
         app.router.add_post("/api/config", self.handle_save_config)
         app.router.add_post("/api/synthesize", self.handle_synthesize)
-
-        runner = web.AppRunner(app)
-        await runner.setup()
-        site = web.TCPSite(runner, self.host, self.port)
-        await site.start()
         print(f"============================================================")
         print(f"  AUDIO STUDIO PARAMETER CONTROL UI RUNNING")
         print(f"  Open in Browser: http://localhost:{self.port}")
         print(f"============================================================")
+        web.run_app(app, host=self.host, port=self.port)
 
 if __name__ == "__main__":
     server = AudioStudioServer(port=9096)
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        loop.run_until_complete(server.start())
-        loop.run_forever()
-    except KeyboardInterrupt:
-        pass
+    server.run()

@@ -114,10 +114,19 @@ export const AgentLoginPage: React.FC<AgentLoginPageProps> = ({ onLoginSuccess }
             </div>
           </div>
 
-          {/* System Diagnostic Badge */}
-          <div className="flex items-center space-x-2.5 px-3.5 py-1.5 rounded-xl bg-slate-950/60 border border-emerald-500/30 text-emerald-400 text-xs font-mono">
-            <Radio className="w-3.5 h-3.5 animate-pulse text-emerald-400" />
-            <span>MicroSIP Engine: 8kHz PCMU Ready</span>
+          {/* Header Action & Diagnostic Badge */}
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => { window.location.hash = '#org-dashboard'; window.location.reload(); }}
+              className="px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-indigo-600/30 border border-slate-700 hover:border-indigo-500/40 text-slate-300 hover:text-white text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer shadow-sm"
+              title="Return to Main Organization Platform"
+            >
+              <span>← Org Dashboard</span>
+            </button>
+            <div className="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-slate-950/60 border border-emerald-500/30 text-emerald-400 text-xs font-mono">
+              <Radio className="w-3.5 h-3.5 animate-pulse text-emerald-400" />
+              <span className="hidden sm:inline">MicroSIP 8kHz</span>
+            </div>
           </div>
         </div>
 

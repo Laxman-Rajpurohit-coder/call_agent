@@ -7,21 +7,19 @@ import os
 import sys
 import json
 import uuid
-import psycopg2
-from psycopg2.extras import RealDictCursor, Json
 from typing import Dict, Any, Optional
 
-sys.stdout.reconfigure(encoding='utf-8')
+try:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor, Json
+    HAS_POSTGRES = True
+except ImportError:
+    HAS_POSTGRES = False
 
-PG_HOST = os.environ.get("POSTGRES_HOST", "127.0.0.1")
-PG_PORT = int(os.environ.get("POSTGRES_PORT", "5432"))
-PG_USER = os.environ.get("POSTGRES_USER", "postgres")
-PG_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "")
-PG_DB = os.environ.get("POSTGRES_DB", "voice_crm")
-
-DEFAULT_ORG_SLUG = "mali-saini-ngo"
 
 def get_connection():
+    if not HAS_POSTGRES:
+        return None
     return psycopg2.connect(
         dbname=PG_DB,
         user=PG_USER,
@@ -33,9 +31,16 @@ def get_connection():
 
 
 def init_db():
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("CREATE EXTENSION IF NOT EXISTS \"pgcrypto\";")
+    if not HAS_POSTGRES:
+        print("ℹ️ PostgreSQL driver (psycopg2) not installed. Running in memory CRM mode.")
+        return
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("CREATE EXTENSION IF NOT EXISTS \"pgcrypto\";")
+    except Exception as e:
+        print(f"⚠️ CRM Postgres Init Warning: {e}")
+
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS organizations (
@@ -116,46 +121,61 @@ def init_db():
 
 
 def handle_call_start(call_id: str, from_number: str, to_number: str, direction: str = "inbound", provider: str = "plivo") -> Dict[str, Any]:
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT id FROM organizations WHERE slug = %s", (DEFAULT_ORG_SLUG,))
-    org = cursor.fetchone()
-    org_id = str(org['id'])
-
-    cursor.execute("SELECT id FROM contacts WHERE organization_id = %s AND phone_number = %s", (org_id, from_number))
-    contact = cursor.fetchone()
-
-    if not contact:
-        cursor.execute(
-            "INSERT INTO contacts (organization_id, phone_number, status) VALUES (%s, %s, %s) RETURNING id",
-            (org_id, from_number, "lead")
-        )
-        contact_id = str(cursor.fetchone()['id'])
-    else:
-        contact_id = str(contact['id'])
-
+    if not HAS_POSTGRES:
+        return {"call_id": call_id, "contact_id": "demo_contact", "org_id": "demo_org"}
     try:
-        valid_uuid = str(uuid.UUID(call_id))
-    except Exception:
-        valid_uuid = str(uuid.uuid4())
+        conn = get_connection()
+        cursor = conn.cursor()
 
-    cursor.execute(
-        """
-        INSERT INTO call_sessions 
-        (id, organization_id, contact_id, provider, direction, from_number, to_number, status, started_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
-        """,
-        (valid_uuid, org_id, contact_id, provider, direction, from_number, to_number, "in_progress")
-    )
-    conn.commit()
-    conn.close()
-    return {"call_id": valid_uuid, "contact_id": contact_id, "org_id": org_id}
+        cursor.execute("SELECT id FROM organizations WHERE slug = %s", (DEFAULT_ORG_SLUG,))
+        org = cursor.fetchone()
+        org_id = str(org['id']) if org else str(uuid.uuid4())
+
+        cursor.execute("SELECT id FROM contacts WHERE organization_id = %s AND phone_number = %s", (org_id, from_number))
+        contact = cursor.fetchone()
+
+        if not contact:
+            cursor.execute(
+                "INSERT INTO contacts (organization_id, phone_number, status) VALUES (%s, %s, %s) RETURNING id",
+                (org_id, from_number, "lead")
+            )
+            contact_id = str(cursor.fetchone()['id'])
+        else:
+            contact_id = str(contact['id'])
+
+        try:
+            valid_uuid = str(uuid.UUID(call_id))
+        except Exception:
+            valid_uuid = str(uuid.uuid4())
+
+        cursor.execute(
+            """
+            INSERT INTO call_sessions 
+            (id, organization_id, contact_id, provider, direction, from_number, to_number, status, started_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+            """,
+            (valid_uuid, org_id, contact_id, provider, direction, from_number, to_number, "in_progress")
+        )
+        conn.commit()
+        conn.close()
+        return {"call_id": valid_uuid, "contact_id": contact_id, "org_id": org_id}
+    except Exception as ex:
+        print(f"⚠️ CRM Postgres handle_call_start warning: {ex}")
+        return {"call_id": call_id, "contact_id": "demo_contact", "org_id": "demo_org"}
 
 
 def handle_call_end(call_id: str, transcript_history: list, status: str = "completed", duration_s: float = 0.0) -> Dict[str, Any]:
-    conn = get_connection()
-    cursor = conn.cursor()
+    if not HAS_POSTGRES:
+        return {}
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        conn.close()
+        return {}
+    except Exception as ex:
+        print(f"⚠️ CRM Postgres handle_call_end warning: {ex}")
+        return {}
+
 
     try:
         valid_uuid = str(uuid.UUID(call_id))

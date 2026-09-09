@@ -114,7 +114,7 @@ export const Header: React.FC<HeaderProps> = React.memo(({
             </span>
           </div>
 
-          {/* Agent Session Header Status / Login Button */}
+          {/* Agent Session Header Status / Login / Logout Button */}
           {agentSession ? (
             <div className="flex items-center space-x-2 bg-indigo-950/60 border border-indigo-500/40 px-3 py-1 rounded-2xl">
               <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
@@ -125,23 +125,36 @@ export const Header: React.FC<HeaderProps> = React.memo(({
               {onLogoutAgent && (
                 <button
                   onClick={onLogoutAgent}
-                  className="p-1 text-slate-400 hover:text-red-400 transition-colors"
+                  className="ml-1.5 px-2.5 py-1 rounded-xl bg-red-500/15 hover:bg-red-500/30 border border-red-500/40 text-red-300 hover:text-white text-xs font-bold transition-all flex items-center space-x-1 shadow-sm active:scale-95"
                   title="Logout Agent"
                 >
-                  <LogOut className="w-4 h-4" />
+                  <LogOut className="w-3.5 h-3.5 text-red-400" />
+                  <span>Logout</span>
                 </button>
               )}
             </div>
           ) : (
-            onOpenAgentLogin && (
-              <button
-                onClick={onOpenAgentLogin}
-                className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-extrabold shadow-md flex items-center space-x-1.5 transition-all"
-              >
-                <UserCheck className="w-4 h-4 text-white" />
-                <span className="hidden sm:inline">Agent Login</span>
-              </button>
-            )
+            <div className="flex items-center space-x-2">
+              {onOpenAgentLogin && (
+                <button
+                  onClick={onOpenAgentLogin}
+                  className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-extrabold shadow-md flex items-center space-x-1.5 transition-all"
+                >
+                  <UserCheck className="w-4 h-4 text-white" />
+                  <span className="hidden sm:inline">Agent Portal</span>
+                </button>
+              )}
+              {onLogoutAgent && (
+                <button
+                  onClick={onLogoutAgent}
+                  className="px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-red-500/20 border border-slate-700 hover:border-red-500/40 text-slate-300 hover:text-red-300 text-xs font-bold transition-all flex items-center space-x-1.5 active:scale-95"
+                  title="Logout to Login Screen"
+                >
+                  <LogOut className="w-3.5 h-3.5 text-red-400" />
+                  <span className="hidden sm:inline">Logout</span>
+                </button>
+              )}
+            </div>
           )}
 
           <button

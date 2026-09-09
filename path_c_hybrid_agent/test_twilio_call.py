@@ -15,7 +15,7 @@ sys.stdout.reconfigure(encoding='utf-8')
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from path_c_hybrid_agent.tts_cartesia import synthesize_speech_hd
 
-TWILIO_WS_URL = "ws://127.0.0.1:9096/media"
+TWILIO_WS_URL = "ws://127.0.0.1:9097/media"
 
 async def test_twilio_stream():
     print("=" * 80)

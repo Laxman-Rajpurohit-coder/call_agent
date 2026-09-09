@@ -200,7 +200,8 @@ async def synthesize_speech(text: str, voice_id: str = "56e35e2d-6eb6-4226-ab8b-
             "Content-Type": "application/json"
         }
         payload = {
-            "model_id": "sonic-3",
+            "model_id": "sonic-preview",
+
             "transcript": text,
             "voice": {
                 "mode": "id", 

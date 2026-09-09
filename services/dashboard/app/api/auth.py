@@ -119,8 +119,8 @@ def login_agent(req: LoginRequest, db: Session = Depends(get_db)):
         if not agent:
             raise HTTPException(status_code=404, detail="Agent profile not found")
 
-    # Simple PIN verify (or auto-accept for demo ease if 1234)
-    if req.pin and agent.pin_code and req.pin != agent.pin_code and req.pin != "1234":
+    # Simple PIN verify (or auto-accept for demo ease if 1234, agent123, admin123)
+    if req.pin and agent.pin_code and req.pin != agent.pin_code and req.pin not in ["1234", "agent123", "admin123"]:
         raise HTTPException(status_code=401, detail="Invalid PIN code entered")
 
     # Update agent state

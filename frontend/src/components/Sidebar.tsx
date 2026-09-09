@@ -1,14 +1,26 @@
 import React from 'react';
-import { LayoutDashboard, Radio, Users, Megaphone, Mic, TestTube2, Cpu, Settings, X, CheckSquare, MessageSquare, UserCheck } from 'lucide-react';
+import { LayoutDashboard, Radio, Users, Megaphone, Mic, TestTube2, Cpu, Settings, X, CheckSquare, MessageSquare, UserCheck, LogOut } from 'lucide-react';
+import { AgentSession } from '../types';
 
 interface SidebarProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
   isOpen?: boolean;
   onClose?: () => void;
+  agentSession?: AgentSession | null;
+  onLogoutAgent?: () => void;
+  onOpenAgentLogin?: () => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = React.memo(({ activeTab, setActiveTab, isOpen = false, onClose }) => {
+export const Sidebar: React.FC<SidebarProps> = React.memo(({ 
+  activeTab, 
+  setActiveTab, 
+  isOpen = false, 
+  onClose,
+  agentSession,
+  onLogoutAgent,
+  onOpenAgentLogin
+}) => {
   const navItems = [
     { id: 'org-dashboard', label: 'Organization Dashboard', icon: LayoutDashboard },
     { id: 'agent-panel', label: 'Agent Panel', icon: UserCheck },
@@ -90,6 +102,74 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({ activeTab, setActiv
             );
           })}
         </nav>
+
+        {/* Agent/Admin Profile & Logout Button */}
+        {agentSession ? (
+          <div className="p-3 border-t border-slate-800 bg-slate-950/60">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center space-x-2.5 min-w-0">
+                <img
+                  src={agentSession.agent.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${agentSession.agent.name}`}
+                  alt={agentSession.agent.name}
+                  className="w-8 h-8 rounded-xl object-cover border border-indigo-500/40 shrink-0"
+                />
+                <div className="min-w-0">
+                  <span className="text-xs font-bold text-white block truncate">{agentSession.agent.name}</span>
+                  <span className="text-[10px] text-emerald-400 font-medium flex items-center space-x-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    <span>Ext {agentSession.agent.sip_extension || '101'}</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+            {onLogoutAgent && (
+              <button
+                onClick={onLogoutAgent}
+                className="w-full py-2 px-3 rounded-xl bg-red-600/15 hover:bg-red-600/30 border border-red-500/30 text-red-300 hover:text-white text-xs font-bold transition-all flex items-center justify-center space-x-2 active:scale-95 cursor-pointer"
+                title="End Agent Session"
+              >
+                <LogOut className="w-3.5 h-3.5 text-red-400" />
+                <span>Logout</span>
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="p-3 border-t border-slate-800 bg-slate-950/60 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-xl bg-indigo-600/30 border border-indigo-500/40 flex items-center justify-center text-xs font-bold text-indigo-200">
+                  ADM
+                </div>
+                <div className="min-w-0">
+                  <span className="text-xs font-bold text-white block truncate">Admin / Supervisor</span>
+                  <span className="text-[10px] text-indigo-400 font-medium">Platform Manager</span>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center space-x-1.5">
+              {onOpenAgentLogin && (
+                <button
+                  onClick={onOpenAgentLogin}
+                  className="flex-1 py-1.5 px-2.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 hover:text-white text-xs font-bold transition-all flex items-center justify-center space-x-1.5 active:scale-95"
+                  title="Switch to Agent Portal"
+                >
+                  <UserCheck className="w-3.5 h-3.5" />
+                  <span>Agent Portal</span>
+                </button>
+              )}
+              {onLogoutAgent && (
+                <button
+                  onClick={onLogoutAgent}
+                  className="py-1.5 px-2.5 rounded-xl bg-red-600/15 hover:bg-red-600/30 border border-red-500/30 text-red-300 hover:text-white text-xs font-bold transition-all flex items-center justify-center space-x-1 active:scale-95 cursor-pointer"
+                  title="Logout / Exit Session"
+                >
+                  <LogOut className="w-3.5 h-3.5 text-red-400" />
+                  <span>Logout</span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Footer Info */}
         <div className="p-4 border-t border-slate-800 text-xs text-slate-400 bg-slate-950/30">

@@ -19,6 +19,14 @@ process.on('unhandledRejection', (reason, promise) => {
   console.error('[Server Error] Unhandled rejection:', reason);
 });
 
+process.on('uncaughtException', (err) => {
+  console.error('[Server Error] Uncaught exception:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[Server Error] Unhandled rejection:', reason);
+});
+
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -51,6 +59,45 @@ app.use('/api/auth', authRoutes);
 app.use('/api/leads', leadsRoutes);
 app.use('/api/activities', activitiesRoutes);
 app.use('/api/telephony', telephonyRoutes);
+
+// Tasks API (Synced with Voice Operations Database)
+app.get('/api/tasks', async (req, res) => {
+  try {
+    const response = await fetch('http://127.0.0.1:9090/api/v1/tasks');
+    const data = await response.json();
+    res.json({ success: true, tasks: data });
+  } catch (err) {
+    res.json({ success: true, tasks: [] });
+  }
+});
+
+app.patch('/api/tasks/:id', async (req, res) => {
+  try {
+    const response = await fetch(`http://127.0.0.1:9090/api/v1/tasks/${req.params.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req.body)
+    });
+    const data = await response.json();
+    res.json({ success: true, data });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/telephony/originate', async (req, res) => {
+  try {
+    const response = await fetch('http://127.0.0.1:9090/api/v1/microsip/originate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req.body)
+    });
+    const data = await response.json();
+    res.json({ success: true, data });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 // Seed default clinic account and admin user if DB is empty
 async function seedDefaultData() {
@@ -179,9 +226,85 @@ io.on('connection', (socket) => {
   });
 });
 
-server.listen(PORT, async () => {
+// Native WebSocket Media Stream Server for Exotel & CPaaS Telephony
+const WebSocket = require('ws');
+const wss = new WebSocket.Server({ noServer: true });
+
+server.on('upgrade', (request, socket, head) => {
+  const pathname = request.url ? request.url.split('?')[0] : '';
+  if (pathname === '/media-stream' || pathname === '/media' || pathname === '/api/telephony/webhook') {
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      wss.emit('connection', ws, request);
+    });
+  }
+});
+
+wss.on('connection', (clientWs, req) => {
+  console.log(`[Telephony Proxy] 🚀 New Exotel WebSocket Stream Connection from ${req.socket.remoteAddress}`);
+  
+  // Notify Dashboard via Socket.IO
+  io.emit('screen-pop-handoff', {
+    caller: '08830718466',
+    status: 'in_progress',
+    message: 'Exotel Voice Stream Connected'
+  });
+
+  // Connect to Python Neural AI Voice Engine (trying port 9096, fallback to 9097)
+  let targetWs = new WebSocket('ws://127.0.0.1:9096/media-stream');
+
+  const setupTargetHandlers = (wsInst) => {
+    wsInst.on('open', () => {
+      console.log('[Telephony Proxy] ✅ Stream connected to Python AI Voice Engine!');
+    });
+
+    wsInst.on('message', (msg, isBinary) => {
+      if (clientWs.readyState === WebSocket.OPEN) {
+        clientWs.send(msg, { binary: isBinary });
+      }
+    });
+
+    wsInst.on('close', () => {
+      if (clientWs.readyState === WebSocket.OPEN) clientWs.close();
+    });
+
+    wsInst.on('error', (err) => {
+      console.error('[Telephony Proxy] ⚠️ Target Engine Error:', err.message);
+      if (clientWs.readyState === WebSocket.OPEN && wsInst === targetWs) {
+        // Retry connection to fallback port 9097
+        console.log('[Telephony Proxy] 🔄 Retrying connection on fallback port 9097...');
+        targetWs = new WebSocket('ws://127.0.0.1:9097/media-stream');
+        setupTargetHandlers(targetWs);
+      }
+    });
+  };
+
+  setupTargetHandlers(targetWs);
+
+  // Exotel -> Python AI Engine
+  clientWs.on('message', (msg, isBinary) => {
+    if (targetWs.readyState === WebSocket.OPEN) {
+      targetWs.send(msg, { binary: isBinary });
+    }
+  });
+
+  clientWs.on('close', () => {
+    console.log('[Telephony Proxy] 🛑 Exotel Stream Closed');
+    if (targetWs.readyState === WebSocket.OPEN) targetWs.close();
+    io.emit('call-ended', { caller: '08830718466' });
+  });
+
+  clientWs.on('error', (err) => {
+    console.error('[Telephony Proxy] ⚠️ Client Stream Error:', err.message);
+    if (targetWs.readyState === WebSocket.OPEN) targetWs.close();
+  });
+
+});
+
+
+server.listen(PORT, '0.0.0.0', async () => {
   await seedDefaultData();
   console.log(`====================================================`);
   console.log(`🚀 Voice Agent & CRM Server running on http://localhost:${PORT}`);
   console.log(`====================================================`);
 });
+

@@ -105,3 +105,37 @@ async def get_contact_history(contact_id: str, db: Session = Depends(get_db)):
         "total_duration_s": sum(c.duration_s or 0 for c in calls),
         "calls": calls
     }
+
+@router.patch("/{contact_id}")
+async def update_contact_disposition(contact_id: str, payload: dict, db: Session = Depends(get_db)):
+    contact = db.query(Contact).filter(Contact.id == contact_id).first()
+    if not contact:
+        contact = db.query(Contact).filter(Contact.phone_number == contact_id).first()
+
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+
+    if "status" in payload:
+        contact.status = payload["status"]
+    if "lead_owner_id" in payload:
+        contact.lead_owner_id = payload["lead_owner_id"]
+    if "custom_fields" in payload:
+        cf = dict(contact.custom_fields or {})
+        cf.update(payload["custom_fields"])
+        contact.custom_fields = cf
+    if "notes" in payload:
+        from datetime import datetime
+        cf = dict(contact.custom_fields or {})
+        notes_list = list(cf.get("agent_notes") or [])
+        notes_list.append({
+            "text": payload["notes"],
+            "timestamp": datetime.utcnow().isoformat(),
+            "agent_id": payload.get("agent_id", "agent-1"),
+            "disposition": payload.get("status")
+        })
+        cf["agent_notes"] = notes_list
+        contact.custom_fields = cf
+
+    db.commit()
+    db.refresh(contact)
+    return {"status": "success", "contact": contact}

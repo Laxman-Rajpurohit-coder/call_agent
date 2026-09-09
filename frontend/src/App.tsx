@@ -101,7 +101,7 @@ export const App: React.FC = () => {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('superfone_agent_session');
     }
-    setActiveTab('org-dashboard');
+    setActiveTab('agent-login');
   }, [agentSession, setActiveTab]);
 
   const handleUpdateAgentStatus = useCallback((newStatus: AgentStatusType) => {
@@ -388,14 +388,16 @@ export const App: React.FC = () => {
       return (
         <Suspense fallback={<PageLoader />}>
           {agentSession ? (
-            <AgentDashboardPage
-              session={agentSession}
-              onUpdateStatus={handleUpdateAgentStatus}
-              onLogout={handleLogoutAgent}
-              calls={calls}
-              contacts={contacts}
-              onRefreshData={fetchData}
-            />
+            <div className="min-h-screen bg-slate-950 text-slate-100 p-4 sm:p-6 md:p-8 overflow-y-auto">
+              <AgentDashboardPage
+                session={agentSession}
+                onUpdateStatus={handleUpdateAgentStatus}
+                onLogout={handleLogoutAgent}
+                calls={calls}
+                contacts={contacts}
+                onRefreshData={fetchData}
+              />
+            </div>
           ) : (
             <AgentLoginPage onLoginSuccess={handleAgentLoginSuccess} />
           )}
@@ -411,6 +413,9 @@ export const App: React.FC = () => {
         setActiveTab={setActiveTab}
         isOpen={isMobileMenuOpen}
         onClose={closeMobileMenu}
+        agentSession={agentSession}
+        onLogoutAgent={handleLogoutAgent}
+        onOpenAgentLogin={() => setActiveTab('agent-login')}
       />
 
       {/* Main Content Area */}

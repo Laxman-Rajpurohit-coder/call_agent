@@ -58,24 +58,29 @@
       </div>
 
       <nav class="nav-menu">
-        <button class="nav-item active" onclick="switchTab('leadsTab')">
+        <button id="navTasksBtn" class="nav-item active" onclick="switchTab('tasksTab')">
+          <span class="icon">📋</span> My Assigned Tasks
+        </button>
+        <button id="navLeadsBtn" class="nav-item" onclick="switchTab('leadsTab')">
           <span class="icon">👥</span> Leads & Appointments
         </button>
         <button class="nav-item" onclick="switchTab('callsTab')">
           <span class="icon">📞</span> AI Call Logs
         </button>
-        <button class="nav-item" onclick="switchTab('simulatorTab')">
+        <button id="navSimBtn" class="nav-item" onclick="switchTab('simulatorTab')">
           <span class="icon">🤖</span> AI Call Simulator
         </button>
       </nav>
 
       <div class="user-profile">
-        <div class="avatar">DS</div>
+        <div class="avatar" id="userAvatar">AV</div>
         <div class="user-info">
-          <strong id="userName">Dr. Sharma</strong>
-          <small>Clinic Owner</small>
+          <strong id="userName">Agent Vikas</strong>
+          <small id="userRole">Telecaller / Sales Agent</small>
         </div>
-        <button onclick="logout()" class="logout-btn" title="Logout">🚪</button>
+        <button onclick="logout()" class="logout-btn" title="Sign Out">
+          <span>🚪</span> Sign Out
+        </button>
       </div>
     </aside>
 
@@ -92,6 +97,7 @@
             <span class="dot"></span> AI Receptionist Active (+91-9876543210)
           </span>
           <button onclick="fetchDashboardData()" class="secondary-btn">🔄 Refresh</button>
+          <button onclick="logout()" class="secondary-btn logout-header-btn" style="background: rgba(239, 68, 68, 0.15); border-color: rgba(239, 68, 68, 0.4); color: #fca5a5; font-weight: 700; cursor: pointer;">🚪 Logout</button>
         </div>
       </header>
 
@@ -127,8 +133,35 @@
         </div>
       </section>
 
+      <!-- TAB 0: AGENT ASSIGNED TASKS -->
+      <section id="tasksTab" class="tab-content active">
+        <div class="table-container">
+          <div class="table-header">
+            <h3>My Assigned Tasks & Follow-ups</h3>
+            <span class="status-pill NEW" id="pendingTasksBadge">0 Pending</span>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Task Title</th>
+                <th>Contact Name</th>
+                <th>Phone</th>
+                <th>Due Date</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="tasksTableBody">
+              <tr>
+                <td colspan="6" class="empty-state">Loading assigned tasks...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <!-- TAB 1: LEADS MANAGEMENT -->
-      <section id="leadsTab" class="tab-content active">
+      <section id="leadsTab" class="tab-content hidden">
         <div class="table-container">
           <div class="table-header">
             <h3>Captured Customer Leads</h3>
@@ -209,6 +242,20 @@
 
           <button onclick="simulateAiCall()" class="primary-btn large-btn">
             ▶️ Trigger Simulated Inbound AI Call
+          </button>
+        </div>
+
+        <div class="simulator-card" style="margin-top: 24px; border: 1px solid #6366f1;">
+          <h3>📞 Trigger Live Outbound AI Phone Call (Exotel API)</h3>
+          <p>Enter your mobile number below to trigger an automated outbound call via Exotel. Your phone will ring and connect directly to Riya, your AI Voice Receptionist.</p>
+          
+          <div class="form-group">
+            <label>Your Mobile Phone Number (10 digits or +91 format)</label>
+            <input type="text" id="outboundPhoneInput" value="8830718466" placeholder="e.g. 8830718466">
+          </div>
+
+          <button onclick="triggerOutboundPhoneCall()" class="primary-btn large-btn" style="background: #10b981;">
+            📞 Ring My Phone Now with AI Agent
           </button>
         </div>
       </section>

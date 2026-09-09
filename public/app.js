@@ -59,6 +59,17 @@ function showDashboard() {
   const user = JSON.parse(localStorage.getItem('crm_user') || '{}');
   if (user.name) {
     document.getElementById('userName').innerText = user.name;
+    const roleElem = document.querySelector('.user-info small');
+    if (roleElem) {
+      roleElem.innerText = user.role === 'AGENT' ? 'Telecaller / Sales Agent' : 'Clinic Owner (Admin)';
+    }
+  }
+
+  // If agent, default to tasksTab
+  if (user.role === 'AGENT') {
+    switchTab('tasksTab');
+  } else {
+    switchTab('leadsTab');
   }
 
   fetchDashboardData();
@@ -74,10 +85,19 @@ function switchTab(tabId) {
   document.querySelectorAll('.tab-content').forEach(tab => tab.classList.add('hidden'));
   document.querySelectorAll('.nav-item').forEach(btn => btn.classList.remove('active'));
 
-  document.getElementById(tabId).classList.remove('hidden');
-  event.currentTarget.classList.add('active');
+  const activeContent = document.getElementById(tabId);
+  if (activeContent) activeContent.classList.remove('hidden');
+
+  const navMap = {
+    'tasksTab': 'navTasksBtn',
+    'leadsTab': 'navLeadsBtn',
+    'simulatorTab': 'navSimBtn'
+  };
+  const activeBtn = document.getElementById(navMap[tabId]);
+  if (activeBtn) activeBtn.classList.add('active');
 
   const titles = {
+    'tasksTab': 'My Assigned Tasks & Follow-ups',
     'leadsTab': 'Leads & Appointments',
     'callsTab': 'AI Call Logs & Transcripts',
     'simulatorTab': 'Live AI Call Simulator'
@@ -86,7 +106,79 @@ function switchTab(tabId) {
 }
 
 async function fetchDashboardData() {
-  await Promise.all([fetchLeads(), fetchActivities()]);
+  await Promise.all([fetchTasks(), fetchLeads(), fetchActivities()]);
+}
+
+async function fetchTasks() {
+  try {
+    const res = await fetch(`${API_BASE}/tasks`);
+    const data = await res.json();
+    if (data.success && data.tasks) {
+      renderTasks(data.tasks);
+      const pendingCount = data.tasks.filter(t => t.status !== 'completed').length;
+      const badge = document.getElementById('pendingTasksBadge');
+      if (badge) badge.innerText = `${pendingCount} Pending`;
+    }
+  } catch (err) {
+    console.error('Error fetching tasks:', err);
+  }
+}
+
+function renderTasks(tasks) {
+  const tbody = document.getElementById('tasksTableBody');
+  if (!tbody) return;
+  if (!tasks || tasks.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" class="empty-state">No assigned tasks found.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = tasks.map(t => {
+    const isDone = t.status === 'completed';
+    return `
+      <tr style="${isDone ? 'opacity: 0.6;' : ''}">
+        <td>
+          <strong style="${isDone ? 'text-decoration: line-through;' : ''}">${escapeHtml(t.title)}</strong>
+          ${t.description ? `<br><small style="color: #94a3b8;">${escapeHtml(t.description)}</small>` : ''}
+        </td>
+        <td>${escapeHtml(t.contact_name || 'Lead')}</td>
+        <td><strong style="color: #6366f1;">${escapeHtml(t.contact_phone || '-')}</strong></td>
+        <td>📅 ${t.due_at ? new Date(t.due_at).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Flexible'}</td>
+        <td><span class="status-pill ${isDone ? 'CONTACTED' : 'NEW'}">${t.status.toUpperCase()}</span></td>
+        <td>
+          ${t.contact_phone ? `<button class="action-btn" style="background:#4f46e5; margin-right:4px;" onclick="initiatePhoneCall('${t.contact_phone}')">📞 Call</button>` : ''}
+          ${!isDone ? `<button class="action-btn" onclick="completeTaskItem('${t.id}')">✅ Done</button>` : '<span style="color:#10b981; font-weight:bold;">Completed</span>'}
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+async function completeTaskItem(taskId) {
+  try {
+    const res = await fetch(`${API_BASE}/tasks/${taskId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'completed' })
+    });
+    if (res.ok) {
+      await fetchTasks();
+    }
+  } catch (err) {
+    console.error('Failed to complete task:', err);
+  }
+}
+
+async function initiatePhoneCall(phone) {
+  try {
+    const res = await fetch(`${API_BASE}/telephony/originate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone_number: phone, auto_answer: 1 })
+    });
+    alert(`Calling ${phone} via MicroSIP Softphone...`);
+  } catch (err) {
+    alert(`Failed to start call: ${err.message}`);
+  }
 }
 
 async function fetchLeads() {
@@ -251,4 +343,28 @@ function closeModal() {
 
 function escapeHtml(str) {
   return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+async function triggerOutboundPhoneCall() {
+  const phone = document.getElementById('outboundPhoneInput').value.trim();
+  if (!phone) {
+    alert('Please enter a valid phone number.');
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/telephony/outbound-call`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to: phone })
+    });
+    const data = await res.json();
+    if (data.success) {
+      alert(`📞 Outbound Call Triggered! Exotel is dialing ${phone} now. Answer your phone to speak with Riya (AI Receptionist).`);
+    } else {
+      alert(`Outbound call error: ${data.error || 'Failed to connect Exotel API'}`);
+    }
+  } catch (err) {
+    alert('Error connecting to backend API: ' + err.message);
+  }
 }

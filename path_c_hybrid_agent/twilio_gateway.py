@@ -27,7 +27,9 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - [TwilioGateway] - 
 logger = logging.getLogger("TwilioGateway")
 
 TWILIO_PORT = 9096
-PUBLIC_DOMAIN = "overuse-clubbed-graffiti.ngrok-free.dev"
+PUBLIC_DOMAIN = "drool-envoy-sandy.ngrok-free.dev"
+
+
 FRAME_SIZE_MULAW = 160 # 20ms at 8kHz mu-law mono
 VAD_SILENCE_FRAMES = 25 # ~500ms silence threshold
 VAD_RMS_THRESHOLD = 250
@@ -50,10 +52,43 @@ class TwilioCallSession:
         self.has_speech = False
         self.silent_frames = 0
         self.is_speaking = False
+        self.is_active = True
+        self.keepalive_task = asyncio.create_task(self.silence_keepalive_loop())
+
+    async def send_mulaw_frame(self, mulaw_chunk: bytes):
+        """Sends G.711 mu-law audio frame formatted as Twilio/Exotel JSON media event."""
+        if not self.ws or self.ws.closed:
+            return
+        b64_payload = base64.b64encode(mulaw_chunk).decode('ascii')
+        media_msg = json.dumps({
+            "event": "media",
+            "streamSid": self.stream_sid,
+            "media": {
+                "payload": b64_payload
+            }
+        })
+        try:
+            await self.ws.send_str(media_msg)
+        except Exception:
+            try:
+                await self.ws.send_bytes(mulaw_chunk)
+            except Exception:
+                pass
+
+    async def silence_keepalive_loop(self):
+        """Sends continuous G.711 u-law silence frames every 20ms to prevent Exotel timeout."""
+        silence_frame = b'\xff' * FRAME_SIZE_MULAW
+        while self.is_active and self.ws and not self.ws.closed:
+            if not self.is_speaking:
+                try:
+                    await self.send_mulaw_frame(silence_frame)
+                except Exception:
+                    break
+            await asyncio.sleep(0.020)
 
     async def send_audio_mulaw(self, pcm_bytes: bytes):
-        """Converts PCM audio to G.711 mu-law, encodes to Base64, and streams over Twilio WebSocket."""
-        if not pcm_bytes or not self.ws:
+        """Converts PCM audio to G.711 mu-law and streams JSON media frames over WebSocket."""
+        if not pcm_bytes or not self.ws or self.ws.closed:
             return
         self.is_speaking = True
 
@@ -62,22 +97,14 @@ class TwilioCallSession:
 
         t_start = time.perf_counter()
         for idx in range(total_frames):
+            if self.ws.closed:
+                break
             offset = idx * FRAME_SIZE_MULAW
             chunk = mulaw_data[offset:offset + FRAME_SIZE_MULAW]
             if not chunk:
                 continue
 
-            b64_payload = base64.b64encode(chunk).decode("ascii")
-            media_msg = {
-                "event": "media",
-                "streamSid": self.stream_sid,
-                "media": {"payload": b64_payload}
-            }
-            try:
-                await self.ws.send_str(json.dumps(media_msg))
-            except Exception as e:
-                logger.warning("Twilio websocket send exception: %s", e)
-                break
+            await self.send_mulaw_frame(chunk)
 
             target_time = t_start + (idx + 1) * 0.020
             sleep_needed = target_time - time.perf_counter()
@@ -85,6 +112,7 @@ class TwilioCallSession:
                 await asyncio.sleep(sleep_needed)
 
         self.is_speaking = False
+
 
     async def send_initial_greeting(self):
         """Sends live greeting upon Twilio stream start in Marwadi."""
@@ -134,16 +162,24 @@ class TwilioCallSession:
         self.conversation_history.append({"role": "assistant", "content": bot_response_text})
 
     def close(self):
+        self.is_active = False
+        if hasattr(self, 'keepalive_task') and self.keepalive_task:
+            self.keepalive_task.cancel()
         duration = round(time.time() - self.start_time, 2)
         handle_call_end(self.call_sid, self.conversation_history, status="completed", duration_s=duration)
-        logger.info("[%s] Twilio Session Finished: duration=%.2fs CRM Saved.", self.stream_sid, duration)
+        logger.info("[%s] Telephony Session Finished: duration=%.2fs CRM Saved.", self.stream_sid, duration)
+
 
 
 async def handle_voice_webhook(request):
-    """HTTP POST/GET /voice Endpoint: Returns TwiML XML instructing Twilio to connect Media Stream."""
+    """HTTP POST/GET /voice & /api/telephony/webhook Endpoint: Returns TwiML XML or upgrades to WebSocket if requested."""
+    if request.headers.get("Upgrade", "").lower() == "websocket" or "sec-websocket-key" in request.headers:
+        logger.info("⚡ Incoming WebSocket Upgrade on Webhook Route from %s -> Forwarding to WebSocket Handler", request.remote)
+        return await handle_media_websocket(request)
+
     host = request.headers.get("Host", PUBLIC_DOMAIN)
     scheme = "wss" if "ngrok" in host or request.scheme == "https" else "ws"
-    ws_url = f"wss://{PUBLIC_DOMAIN}/media"
+    ws_url = f"{scheme}://{host}/media-stream"
 
     twiml_response = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -152,20 +188,29 @@ async def handle_voice_webhook(request):
     </Connect>
 </Response>"""
 
-    logger.info("📥 Incoming Twilio HTTP Voice Webhook from %s -> Returning TwiML Stream URL: %s", request.remote, ws_url)
+    logger.info("📥 Incoming CPaaS HTTP Voice Webhook from %s (Host: %s) -> Returning TwiML Stream URL: %s", request.remote, host, ws_url)
     return web.Response(text=twiml_response, content_type="text/xml")
 
 
+
 async def handle_media_websocket(request):
-    """WebSocket /media Endpoint: Streams live audio between Twilio and Path C Marwadi Agent."""
+    """WebSocket Endpoint: Streams live audio between Exotel/Twilio and Voice Agent."""
     ws = web.WebSocketResponse()
     await ws.prepare(request)
-    logger.info("🚀 New Twilio Media Stream WebSocket Connection Established from %s", request.remote)
+    logger.info("🚀 New Telephony Media Stream WebSocket Connection Established from %s", request.remote)
     
     session = None
 
     try:
         async for msg in ws:
+            # Auto-initialize session on first message if not already started
+            if session is None:
+                stream_sid = f"ex_stream_{int(time.time())}"
+                call_sid = f"ex_call_{int(time.time())}"
+                session = TwilioCallSession(stream_sid, call_sid, ws, "+918830718466")
+                logger.info("🚀 Telephony Call Session Auto-Started: StreamSid=%s", stream_sid)
+                asyncio.create_task(session.send_initial_greeting())
+
             if msg.type == web.WSMsgType.TEXT:
                 try:
                     msg_data = json.loads(msg.data)
@@ -173,18 +218,11 @@ async def handle_media_websocket(request):
 
                     if event_type == "start":
                         start_obj = msg_data.get("start", {})
-                        stream_sid = start_obj.get("streamSid", f"tw_stream_{int(time.time())}")
-                        call_sid = start_obj.get("callSid", f"tw_call_{int(time.time())}")
-                        custom_params = start_obj.get("customParameters", {})
-                        caller = custom_params.get("caller", "+919811223344")
+                        if start_obj.get("streamSid"):
+                            session.stream_sid = start_obj.get("streamSid")
+                        logger.info("🚀 Received Start Event: StreamSid=%s", session.stream_sid)
 
-                        session = TwilioCallSession(stream_sid, call_sid, ws, caller)
-                        logger.info("🚀 Twilio Stream Started: StreamSid=%s, CallSid=%s", stream_sid, call_sid)
-                        
-                        # Send initial Marwadi greeting
-                        asyncio.create_task(session.send_initial_greeting())
-
-                    elif event_type == "media" and session:
+                    elif event_type == "media":
                         media_obj = msg_data.get("media", {})
                         b64_payload = media_obj.get("payload")
                         if b64_payload:
@@ -205,15 +243,37 @@ async def handle_media_websocket(request):
                                     session.silent_frames = 0
                                     asyncio.create_task(session.process_caller_utterance(speech_chunk))
 
-                    elif event_type == "stop" and session:
-                        logger.info("🛑 Twilio Stream Stopped: StreamSid=%s", session.stream_sid)
-                        break
+                    elif event_type == "stop":
+                        logger.info("ℹ️ Exotel sent stop event (ignoring break to keep stream connection active): StreamSid=%s", session.stream_sid)
+
 
                 except Exception as ex:
-                    logger.error("Twilio message error: %s", ex)
+                    logger.error("Telephony text message error: %s", ex)
 
-            elif msg.type == web.WSMsgType.ERROR:
-                logger.error("Twilio WebSocket connection error: %s", ws.exception())
+            elif msg.type == web.WSMsgType.BINARY:
+                try:
+                    mulaw_bytes = msg.data
+                    pcm_bytes = audioop.ulaw2lin(mulaw_bytes, 2)
+                    session.pcm_rx_buffer.extend(pcm_bytes)
+                    
+                    rms = audioop.rms(pcm_bytes, 2)
+                    if rms > VAD_RMS_THRESHOLD:
+                        session.has_speech = True
+                        session.silent_frames = 0
+                    elif session.has_speech:
+                        session.silent_frames += 1
+                        if session.silent_frames >= VAD_SILENCE_FRAMES:
+                            speech_chunk = bytes(session.pcm_rx_buffer)
+                            session.pcm_rx_buffer = bytearray()
+                            session.has_speech = False
+                            session.silent_frames = 0
+                            asyncio.create_task(session.process_caller_utterance(speech_chunk))
+                except Exception as ex:
+                    logger.error("Telephony binary frame error: %s", ex)
+
+            elif msg.type in (web.WSMsgType.ERROR, web.WSMsgType.CLOSED, web.WSMsgType.CLOSING):
+                logger.info("Telephony WebSocket closing/closed.")
+                break
 
     finally:
         if session:
@@ -222,15 +282,21 @@ async def handle_media_websocket(request):
     return ws
 
 
+
 def create_app():
     app = web.Application()
     app.router.add_get('/voice', handle_voice_webhook)
     app.router.add_post('/voice', handle_voice_webhook)
     app.router.add_get('/twiml', handle_voice_webhook)
     app.router.add_post('/twiml', handle_voice_webhook)
+    app.router.add_post('/api/telephony/webhook', handle_voice_webhook)
+    app.router.add_get('/api/telephony/webhook', handle_media_websocket)
     app.router.add_get('/', handle_voice_webhook)
     app.router.add_get('/media', handle_media_websocket)
+    app.router.add_get('/media-stream', handle_media_websocket)
     return app
+
+
 
 
 async def main():
