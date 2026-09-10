@@ -1,4 +1,4 @@
-const API_BASE = 'http://localhost:8080/api';
+const API_BASE = window.location.origin + '/api';
 let socket = null;
 
 // Initialize App
@@ -211,6 +211,7 @@ function renderLeads(leads) {
       <td>${new Date(lead.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
       <td><span class="status-pill ${lead.status}">${lead.status}</span></td>
       <td>
+        <button class="action-btn" style="background:#10b981; color:#fff; font-weight:600; margin-right:4px;" onclick="triggerOutboundPhoneCall('${escapeHtml(lead.phone)}')">📞 Call Customer</button>
         <button class="action-btn" onclick="updateLeadStatus('${lead.id}', 'CONTACTED')">Mark Contacted</button>
       </td>
     </tr>
@@ -345,8 +346,9 @@ function escapeHtml(str) {
   return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-async function triggerOutboundPhoneCall() {
-  const phone = document.getElementById('outboundPhoneInput').value.trim();
+async function triggerOutboundPhoneCall(targetPhone) {
+  const phoneInput = document.getElementById('outboundPhoneInput');
+  const phone = targetPhone || (phoneInput ? phoneInput.value.trim() : '');
   if (!phone) {
     alert('Please enter a valid phone number.');
     return;
