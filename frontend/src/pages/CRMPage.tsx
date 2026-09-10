@@ -45,7 +45,7 @@ export const CRMPage: React.FC<CRMPageProps> = ({ calls, contacts, onImportCSV, 
 
   // Manual Dial Modal States
   const [isDialerOpen, setIsDialerOpen] = useState(false);
-  const [dialPhone, setDialPhone] = useState('test1000');
+  const [dialPhone, setDialPhone] = useState('');
   const [dialName, setDialName] = useState('');
   const [dialVoice, setDialVoice] = useState('cartesia_hi_sonic');
   const [dialMode, setDialMode] = useState<'INTERACTIVE_AI' | 'SCRIPT'>('INTERACTIVE_AI');
@@ -112,7 +112,7 @@ STRICT TELEPHONY RULE: Output ONLY 1-2 spoken response sentences. Never output i
   };
 
   // Trigger Quick Manual Call for any contact/number
-  const openManualDialer = (phone: string = 'test1000', name: string = '') => {
+  const openManualDialer = (phone: string = '', name: string = '') => {
     setDialPhone(phone);
     setDialName(name);
     setDialStatus(null);
@@ -128,30 +128,52 @@ STRICT TELEPHONY RULE: Output ONLY 1-2 spoken response sentences. Never output i
     setIsDialing(true);
     setDialStatus("Initiating direct softphone call...");
     try {
-      const resp = await fetch('/api/v1/calls/manual-dial', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          phone_number: dialPhone.trim(),
-          contact_name: dialName.trim() || undefined,
-          voice_model: dialVoice,
-          call_mode: dialMode,
-          dial_mode: dialRoute,
-          script_content: dialMode === 'SCRIPT' ? dialScript : '',
-          system_prompt: dialMode === 'INTERACTIVE_AI' ? dialPrompt : ''
-        })
-      });
+      if (dialRoute === 'sim') {
+        setDialStatus("📞 EXOTEL DIALING... Calling phone via Exotel API!");
+        const resp = await fetch('/api/telephony/outbound-call', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: dialPhone.trim(),
+            contact_name: dialName.trim() || undefined,
+            script_content: dialMode === 'SCRIPT' ? dialScript : '',
+            system_prompt: dialMode === 'INTERACTIVE_AI' ? dialPrompt : ''
+          })
+        });
 
-      if (resp.ok) {
-        const data = await resp.json();
-        setDialStatus(`📲 CALLING MICROSIP! ${data.message || 'Ringing on desktop...'}`);
-        // Immediately refresh call session records in UI
-        if (onRefreshData) onRefreshData();
-        setTimeout(() => { if (onRefreshData) onRefreshData(); }, 1500);
-        setTimeout(() => { if (onRefreshData) onRefreshData(); }, 3500);
+        if (resp.ok) {
+          setDialStatus(`📞 EXOTEL DIALING! Ringing ${dialPhone.trim()} on cellular SIM network...`);
+          if (onRefreshData) onRefreshData();
+          setTimeout(() => { if (onRefreshData) onRefreshData(); }, 1500);
+        } else {
+          const err = await resp.json().catch(() => ({}));
+          setDialStatus(`❌ Exotel Call Failed: ${err.error || err.detail || 'Server error'}`);
+        }
       } else {
-        const err = await resp.json().catch(() => ({}));
-        setDialStatus(`❌ Call Failed: ${err.detail || 'Server error'}`);
+        const resp = await fetch('/api/v1/calls/manual-dial', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            phone_number: dialPhone.trim(),
+            contact_name: dialName.trim() || undefined,
+            voice_model: dialVoice,
+            call_mode: dialMode,
+            dial_mode: dialRoute,
+            script_content: dialMode === 'SCRIPT' ? dialScript : '',
+            system_prompt: dialMode === 'INTERACTIVE_AI' ? dialPrompt : ''
+          })
+        });
+
+        if (resp.ok) {
+          const data = await resp.json();
+          setDialStatus(`📲 CALLING MICROSIP! ${data.message || 'Ringing on desktop...'}`);
+          if (onRefreshData) onRefreshData();
+          setTimeout(() => { if (onRefreshData) onRefreshData(); }, 1500);
+          setTimeout(() => { if (onRefreshData) onRefreshData(); }, 3500);
+        } else {
+          const err = await resp.json().catch(() => ({}));
+          setDialStatus(`❌ Call Failed: ${err.detail || 'Server error'}`);
+        }
       }
     } catch (ex: any) {
       setDialStatus(`❌ Error initiating call: ${ex.message}`);
@@ -208,7 +230,7 @@ STRICT TELEPHONY RULE: Output ONLY 1-2 spoken response sentences. Never output i
           </div>
 
           <button
-            onClick={() => openManualDialer('test1000')}
+            onClick={() => openManualDialer('')}
             className="flex items-center space-x-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs transition-all shadow-lg shadow-emerald-600/20 active:scale-95"
           >
             <PhoneCall className="w-4 h-4" />
@@ -690,20 +712,31 @@ STRICT TELEPHONY RULE: Output ONLY 1-2 spoken response sentences. Never output i
             <div className="space-y-4 text-xs">
               <div>
                 <label className="block text-slate-400 mb-1 font-medium">Target Phone Number</label>
-                <div className="flex space-x-2">
+                <div className="space-y-2">
                   <input
                     type="text"
                     value={dialPhone}
                     onChange={(e) => setDialPhone(e.target.value)}
-                    placeholder="Enter phone or SIP extension (e.g. test1000)"
-                    className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-100 font-mono focus:outline-none focus:border-brand-500"
+                    placeholder="Enter 10-digit phone number (e.g. 8830718466) or SIP extension"
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-100 font-mono focus:outline-none focus:border-brand-500"
                   />
-                  <button
-                    onClick={() => setDialPhone('test1000')}
-                    className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-xs border border-slate-700 whitespace-nowrap"
-                  >
-                    test1000 (Softphone)
-                  </button>
+                  <div className="flex items-center space-x-2 text-[11px]">
+                    <span className="text-slate-500 font-medium">Quick Presets:</span>
+                    <button
+                      type="button"
+                      onClick={() => { setDialPhone('8830718466'); setDialRoute('sim'); }}
+                      className="px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 font-mono transition-colors flex items-center space-x-1"
+                    >
+                      <span>📱 SIM (8830718466)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setDialPhone('test1000'); setDialRoute('app'); }}
+                      className="px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-mono transition-colors flex items-center space-x-1"
+                    >
+                      <span>💻 Softphone (test1000)</span>
+                    </button>
+                  </div>
                 </div>
               </div>
 
