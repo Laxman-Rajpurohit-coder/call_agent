@@ -12,14 +12,14 @@ import base64
 import asyncio
 import audioop
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from aiohttp import web
 
 sys.stdout.reconfigure(encoding='utf-8')
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from path_c_hybrid_agent.stt_deepgram import transcribe_audio_chunk
-from path_c_hybrid_agent.llm_groq import stream_llm_response
+from path_c_hybrid_agent.llm_groq import stream_llm_response, clean_reasoning_tokens, normalize_phonetics_for_tts
 from path_c_hybrid_agent.tts_cartesia import synthesize_speech
 from path_c_hybrid_agent.crm_postgres import init_db, handle_call_start, handle_call_end
 
@@ -31,9 +31,14 @@ PUBLIC_DOMAIN = "drool-envoy-sandy.ngrok-free.dev"
 
 
 FRAME_SIZE_MULAW = 160 # 20ms at 8kHz mu-law mono
-VAD_SILENCE_FRAMES = 25 # ~500ms silence threshold
-VAD_RMS_THRESHOLD = 250
+VAD_SILENCE_FRAMES = 17 # ~340ms silence threshold (< 350ms rule)
+VAD_RMS_THRESHOLD = 60 # Sensitive threshold for telephony audio
 
+
+INITIAL_GREETING_TEXT = "राम-राम सा! माली सैनी समाज सेवा फाउंडेशन में आपरो घणो-घणो स्वागत है। मैं आपकी काई सहायता कर सकूँ?"
+PRECACHED_GREETING_PCM: Optional[bytes] = None
+
+import numpy as np
 
 class TwilioCallSession:
     def __init__(self, stream_sid: str, call_sid: str, ws, caller_number: str = "+919811223344"):
@@ -46,52 +51,66 @@ class TwilioCallSession:
         # CRM Lifecycle Init
         self.crm_info = handle_call_start(self.call_sid, self.caller_number, "+918000000700", direction="inbound", provider="twilio")
         self.conversation_history: List[Dict[str, str]] = [
-            {"role": "assistant", "content": "राम-राम सा! माली सैनी समाज सेवा फाउंडेशन में आपरो घणो-घणो स्वागत है। मैं आपकी काई सहायता कर सकूँ?"}
+            {"role": "assistant", "content": INITIAL_GREETING_TEXT}
         ]
         self.pcm_rx_buffer = bytearray()
         self.has_speech = False
         self.silent_frames = 0
         self.is_speaking = False
         self.is_active = True
+        self.is_pcm16 = False
+        self.frame_count = 0
         self.keepalive_task = asyncio.create_task(self.silence_keepalive_loop())
 
-    async def send_mulaw_frame(self, mulaw_chunk: bytes):
-        """Sends G.711 mu-law audio frame formatted as Twilio/Exotel JSON media event."""
+    async def send_mulaw_frame(self, chunk: bytes):
+        """Sends audio frame formatted as Twilio/Exotel JSON media event."""
         if not self.ws or self.ws.closed:
             return
-        b64_payload = base64.b64encode(mulaw_chunk).decode('ascii')
-        media_msg = json.dumps({
+        b64_payload = base64.b64encode(chunk).decode('ascii')
+        media_dict = {
             "event": "media",
+            "stream_sid": self.stream_sid,
             "streamSid": self.stream_sid,
             "media": {
-                "payload": b64_payload
+                "payload": b64_payload,
+                "track": "outbound",
+                "stream_sid": self.stream_sid,
+                "streamSid": self.stream_sid
             }
-        })
+        }
+
+        media_msg = json.dumps(media_dict)
         try:
             await self.ws.send_str(media_msg)
         except Exception:
             try:
-                await self.ws.send_bytes(mulaw_chunk)
+                await self.ws.send_bytes(chunk)
             except Exception:
                 pass
 
     async def silence_keepalive_loop(self):
-        """Sends continuous G.711 u-law silence frames every 20ms to prevent Exotel timeout."""
-        silence_frame = b'\xff' * FRAME_SIZE_MULAW
+        """Maintains active session loop with zero microphone audio suppression."""
         while self.is_active and self.ws and not self.ws.closed:
-            if not self.is_speaking:
-                try:
-                    await self.send_mulaw_frame(silence_frame)
-                except Exception:
-                    break
-            await asyncio.sleep(0.020)
+            await asyncio.sleep(1.0)
 
     async def send_audio_mulaw(self, pcm_bytes: bytes):
-        """Converts PCM audio to G.711 mu-law and streams JSON media frames over WebSocket."""
+        """Converts 8kHz PCM audio to G.711 mu-law (PCMU) with Peak Gain Normalization and streams over WebSocket."""
         if not pcm_bytes or not self.ws or self.ws.closed:
             return
         self.is_speaking = True
 
+        # 1. Peak Gain Normalization to -2dBFS for loud, crisp telephony playback
+        try:
+            samples = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32)
+            max_val = np.max(np.abs(samples))
+            if max_val > 50 and max_val < 20000:
+                scale = 25000.0 / max_val
+                samples_norm = np.clip(samples * scale, -32767, 32767).astype(np.int16)
+                pcm_bytes = samples_norm.tobytes()
+        except Exception:
+            pass
+
+        # 2. Convert normalized PCM to G.711 mu-law (8kHz 8-bit mono)
         mulaw_data = audioop.lin2ulaw(pcm_bytes, 2)
         total_frames = (len(mulaw_data) + FRAME_SIZE_MULAW - 1) // FRAME_SIZE_MULAW
 
@@ -115,51 +134,54 @@ class TwilioCallSession:
 
 
     async def send_initial_greeting(self):
-        """Sends live greeting upon Twilio stream start in Marwadi."""
-        greeting = "राम-राम सा! माली सैनी समाज सेवा फाउंडेशन में आपरो घणो-घणो स्वागत है। मैं आपकी काई सहायता कर सकूँ?"
-        logger.info("[%s] Sending Live Initial Marwadi Greeting to Twilio...", self.stream_sid)
-        pcm_out = await synthesize_speech(greeting)
-        if pcm_out:
-            await self.send_audio_mulaw(pcm_out)
+        """Sends live greeting upon Twilio/Exotel stream start in Marwadi."""
+        global PRECACHED_GREETING_PCM
+        logger.info("[%s] Sending Live Initial Marwadi Greeting to CPaaS...", self.stream_sid)
+        if PRECACHED_GREETING_PCM is None:
+            PRECACHED_GREETING_PCM = await synthesize_speech(INITIAL_GREETING_TEXT)
+        if PRECACHED_GREETING_PCM and not self.ws.closed:
+            await self.send_audio_mulaw(PRECACHED_GREETING_PCM)
 
     async def process_caller_utterance(self, pcm_bytes: bytes):
         """Executes Path C Pipeline: STT -> Groq LLM -> Cartesia TTS -> Twilio Stream."""
-        if len(pcm_bytes) < 3200:
+        if len(pcm_bytes) < 1600:
             return
 
         t0 = time.time()
-        logger.info("[%s] Processing Twilio Utterance (%d bytes)...", self.stream_sid, len(pcm_bytes))
+        logger.info("[%s] 🎙️ Processing Telephony Utterance (%d bytes)...", self.stream_sid, len(pcm_bytes))
 
-        # 1. Deepgram STT
+        # 1. Groq / Deepgram Dual Cloud STT
         stt_res = await transcribe_audio_chunk(pcm_bytes)
         user_text = stt_res.get("text", "").strip()
+        stt_provider = stt_res.get("provider", "none")
         stt_time = round((time.time() - t0) * 1000, 1)
 
         if not user_text:
-            logger.info("[%s] STT Empty or Silent. (STT Time: %.1fms)", self.stream_sid, stt_time)
+            logger.info("[%s] ⚠️ STT Empty or Silent. (STT Time: %.1fms, Provider: %s)", self.stream_sid, stt_time, stt_provider)
             return
 
-        logger.info("[%s] 🗣️ Twilio STT Output: '%s' (STT Time: %.1fms)", self.stream_sid, user_text, stt_time)
+        logger.info("[%s] 🗣️ User Spoke (%s, %.1fms): '%s'", self.stream_sid, stt_provider, stt_time, user_text)
         self.conversation_history.append({"role": "user", "content": user_text})
 
         # 2. Groq LLM Stream -> Cartesia TTS Pipeline
         bot_response_text = ""
         full_buffer = ""
 
-        async for token in stream_llm_response(user_text, self.conversation_history):
+        async for token in stream_llm_response(self.conversation_history, max_tokens=35):
             bot_response_text += token
             full_buffer += token
 
-        clean_text = full_buffer.strip()
+        clean_text = clean_reasoning_tokens(normalize_phonetics_for_tts(full_buffer.strip()))
         if clean_text:
+            logger.info("[%s] 🤖 AI Response: '%s'", self.stream_sid, clean_text)
             pcm_out = await synthesize_speech(clean_text)
             if pcm_out:
                 await self.send_audio_mulaw(pcm_out)
 
         total_turn_ms = round((time.time() - t0) * 1000, 1)
-        bot_response_text = bot_response_text.strip()
-        logger.info("[%s] 🤖 Twilio LLM Response: '%s' (Total Latency: %.1fms)", self.stream_sid, bot_response_text, total_turn_ms)
-        self.conversation_history.append({"role": "assistant", "content": bot_response_text})
+        logger.info("[%s] ✅ Turn Completed in %.1fms", self.stream_sid, total_turn_ms)
+        if clean_text:
+            self.conversation_history.append({"role": "assistant", "content": clean_text})
 
     def close(self):
         self.is_active = False
@@ -199,39 +221,69 @@ async def handle_media_websocket(request):
     await ws.prepare(request)
     logger.info("🚀 New Telephony Media Stream WebSocket Connection Established from %s", request.remote)
     
-    session = None
+    stream_sid = f"ex_stream_{int(time.time())}"
+    call_sid = f"ex_call_{int(time.time())}"
+    session = TwilioCallSession(stream_sid, call_sid, ws, "+918830718466")
+    logger.info("🚀 Telephony Call Session Auto-Started: StreamSid=%s", stream_sid)
 
     try:
         async for msg in ws:
-            # Auto-initialize session on first message if not already started
-            if session is None:
-                stream_sid = f"ex_stream_{int(time.time())}"
-                call_sid = f"ex_call_{int(time.time())}"
-                session = TwilioCallSession(stream_sid, call_sid, ws, "+918830718466")
-                logger.info("🚀 Telephony Call Session Auto-Started: StreamSid=%s", stream_sid)
-                asyncio.create_task(session.send_initial_greeting())
-
             if msg.type == web.WSMsgType.TEXT:
                 try:
                     msg_data = json.loads(msg.data)
                     event_type = msg_data.get("event")
 
                     if event_type == "start":
+                        logger.info("🚀 Received Raw Start Event Data: %s", msg.data)
                         start_obj = msg_data.get("start", {})
-                        if start_obj.get("streamSid"):
-                            session.stream_sid = start_obj.get("streamSid")
-                        logger.info("🚀 Received Start Event: StreamSid=%s", session.stream_sid)
+                        actual_sid = (
+                            start_obj.get("streamSid") or 
+                            start_obj.get("stream_sid") or 
+                            start_obj.get("sid") or 
+                            msg_data.get("streamSid") or 
+                            msg_data.get("stream_sid") or 
+                            msg_data.get("sid")
+                        )
+                        if actual_sid:
+                            session.stream_sid = actual_sid
+                        
+                        media_format = start_obj.get("media_format", {})
+                        sample_rate = int(media_format.get("sample_rate", 8000))
+                        bit_rate = str(media_format.get("bit_rate", ""))
+                        encoding = str(media_format.get("encoding", ""))
+                        session.is_pcm16 = "128" in bit_rate or "pcm" in encoding.lower() or "linear" in encoding.lower()
+                        logger.info("🚀 Media Format Detected: SampleRate=%d, BitRate=%s, Encoding=%s -> is_pcm16=%s", sample_rate, bit_rate, encoding, session.is_pcm16)
+
+                        caller_num = start_obj.get("from") or start_obj.get("caller") or "+918830718466"
+                        session.caller_number = caller_num
+
+                        logger.info("🚀 Received Start Event: StreamSid=%s -> Triggering Live Greeting", session.stream_sid)
+                        asyncio.create_task(session.send_initial_greeting())
 
                     elif event_type == "media":
                         media_obj = msg_data.get("media", {})
-                        b64_payload = media_obj.get("payload")
+                        b64_payload = (
+                            (media_obj.get("payload") if isinstance(media_obj, dict) else None) or
+                            msg_data.get("payload") or
+                            msg_data.get("chunk")
+                        )
                         if b64_payload:
-                            mulaw_bytes = base64.b64decode(b64_payload)
-                            pcm_bytes = audioop.ulaw2lin(mulaw_bytes, 2)
+                            raw_bytes = base64.b64decode(b64_payload)
+                            if session.is_pcm16:
+                                pcm_bytes = raw_bytes
+                            else:
+                                pcm_bytes = audioop.ulaw2lin(raw_bytes, 2)
+                                
                             session.pcm_rx_buffer.extend(pcm_bytes)
                             
                             rms = audioop.rms(pcm_bytes, 2)
+                            session.frame_count += 1
+                            if session.frame_count <= 3 or session.frame_count % 100 == 0:
+                                logger.info("[%s] 📊 Audio Frame #%d: len=%d bytes, RMS=%d (is_pcm16=%s)", session.stream_sid, session.frame_count, len(pcm_bytes), rms, session.is_pcm16)
+
                             if rms > VAD_RMS_THRESHOLD:
+                                if not session.has_speech:
+                                    logger.info("[%s] 🎙️ Speech Detected! (RMS=%d > %d)", session.stream_sid, rms, VAD_RMS_THRESHOLD)
                                 session.has_speech = True
                                 session.silent_frames = 0
                             elif session.has_speech:
@@ -241,23 +293,33 @@ async def handle_media_websocket(request):
                                     session.pcm_rx_buffer = bytearray()
                                     session.has_speech = False
                                     session.silent_frames = 0
+                                    logger.info("[%s] 🗣️ User Utterance Completed (%d bytes audio) -> Processing STT & LLM", session.stream_sid, len(speech_chunk))
                                     asyncio.create_task(session.process_caller_utterance(speech_chunk))
 
                     elif event_type == "stop":
                         logger.info("ℹ️ Exotel sent stop event (ignoring break to keep stream connection active): StreamSid=%s", session.stream_sid)
-
 
                 except Exception as ex:
                     logger.error("Telephony text message error: %s", ex)
 
             elif msg.type == web.WSMsgType.BINARY:
                 try:
-                    mulaw_bytes = msg.data
-                    pcm_bytes = audioop.ulaw2lin(mulaw_bytes, 2)
+                    raw_bytes = msg.data
+                    if session.is_pcm16:
+                        pcm_bytes = raw_bytes
+                    else:
+                        pcm_bytes = audioop.ulaw2lin(raw_bytes, 2)
+
                     session.pcm_rx_buffer.extend(pcm_bytes)
                     
                     rms = audioop.rms(pcm_bytes, 2)
+                    session.frame_count += 1
+                    if session.frame_count <= 3 or session.frame_count % 100 == 0:
+                        logger.info("[%s] 📊 Binary Frame #%d: len=%d bytes, RMS=%d (is_pcm16=%s)", session.stream_sid, session.frame_count, len(pcm_bytes), rms, session.is_pcm16)
+
                     if rms > VAD_RMS_THRESHOLD:
+                        if not session.has_speech:
+                            logger.info("[%s] 🎙️ Speech Detected! (RMS=%d > %d)", session.stream_sid, rms, VAD_RMS_THRESHOLD)
                         session.has_speech = True
                         session.silent_frames = 0
                     elif session.has_speech:
@@ -267,6 +329,7 @@ async def handle_media_websocket(request):
                             session.pcm_rx_buffer = bytearray()
                             session.has_speech = False
                             session.silent_frames = 0
+                            logger.info("[%s] 🗣️ User Utterance Completed (%d bytes audio) -> Processing STT & LLM", session.stream_sid, len(speech_chunk))
                             asyncio.create_task(session.process_caller_utterance(speech_chunk))
                 except Exception as ex:
                     logger.error("Telephony binary frame error: %s", ex)
@@ -300,7 +363,13 @@ def create_app():
 
 
 async def main():
+    global PRECACHED_GREETING_PCM
     init_db()
+    
+    logger.info("⚡ Pre-synthesizing initial greeting for 0ms call setup latency...")
+    PRECACHED_GREETING_PCM = await synthesize_speech(INITIAL_GREETING_TEXT)
+    logger.info("✅ Initial greeting pre-rendered (%d bytes PCM audio pool ready).", len(PRECACHED_GREETING_PCM) if PRECACHED_GREETING_PCM else 0)
+
     app = create_app()
     runner = web.AppRunner(app)
     await runner.setup()

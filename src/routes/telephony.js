@@ -6,18 +6,22 @@ const prisma = require('../db');
 const handleWebhook = async (req, res) => {
   try {
     const { From, To, CallSid, CallStatus } = { ...req.query, ...req.body };
-    console.log(`[Telephony Webhook] Call Event received: From=${From}, To=${To}, Status=${CallStatus || 'active'}`);
+    console.log(`[Telephony Webhook] 📥 Call Event: Method=${req.method}, From=${From}, To=${To}, Status=${CallStatus || 'active'}`);
+    console.log(`[Telephony Webhook] Headers: User-Agent=${req.headers['user-agent']}, Accept=${req.headers['accept']}`);
+    console.log(`[Telephony Webhook] Query:`, JSON.stringify(req.query));
+    console.log(`[Telephony Webhook] Body:`, JSON.stringify(req.body));
 
     const host = req.headers.host || 'drool-envoy-sandy.ngrok-free.dev';
     const wsScheme = (req.secure || host.includes('ngrok')) ? 'wss' : 'ws';
     const streamUrl = `${wsScheme}://${host}/media-stream`;
 
-    // Exotel Stream Applet returns JSON wss URL if requested or format=json
+    // Exotel Stream Applet returns JSON wss URL if requested or format=json or Exotel Passthru
     if (req.headers.accept?.includes('application/json') || req.query.format === 'json') {
-      return res.json({ url: streamUrl, status: 'success' });
+      console.log(`[Telephony Webhook] ⏩ Returning JSON Stream URL: ${streamUrl}`);
+      return res.json({ url: streamUrl, select: 'stream', status: 'success' });
     }
 
-    // Standard TWIML / CPaaS Response to connect inbound call stream
+    console.log(`[Telephony Webhook] ⏩ Returning XML Stream Response: ${streamUrl}`);
     return res.type('text/xml').send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Connect>
@@ -57,9 +61,10 @@ router.post('/outbound-call', async (req, res) => {
     const webhookUrl = `https://${req.headers.host || 'drool-envoy-sandy.ngrok-free.dev'}/api/telephony/webhook`;
     const params = new URLSearchParams({
       From: to,
-      To: to,
+      To: callerId,
       CallerId: callerId,
       Url: webhookUrl,
+      Method: 'POST',
       CallType: 'trans'
     });
 

@@ -42,6 +42,9 @@ document.addEventListener('DOMContentLoaded', () => {
     socket.on('screen-pop-handoff', (payload) => {
       showScreenPop(payload);
     });
+    socket.on('call-ended', () => {
+      dismissPop();
+    });
   } catch (err) {
     console.log('Socket initialization error:', err);
   }

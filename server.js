@@ -244,17 +244,32 @@ wss.on('connection', (clientWs, req) => {
   
   // Notify Dashboard via Socket.IO
   io.emit('screen-pop-handoff', {
-    caller: '08830718466',
+    name: 'Laxman Singh',
+    phone: '08830718466',
+    need: 'AI Voice Receptionist',
+    preferredTime: 'Live Active Call',
     status: 'in_progress',
     message: 'Exotel Voice Stream Connected'
   });
 
   // Connect to Python Neural AI Voice Engine (trying port 9096, fallback to 9097)
   let targetWs = new WebSocket('ws://127.0.0.1:9096/media-stream');
+  const pendingBuffer = [];
 
   const setupTargetHandlers = (wsInst) => {
     wsInst.on('open', () => {
       console.log('[Telephony Proxy] ✅ Stream connected to Python AI Voice Engine!');
+      // Flush any early messages (e.g. start event) received while connecting
+      while (pendingBuffer.length > 0) {
+        const item = pendingBuffer.shift();
+        if (wsInst.readyState === WebSocket.OPEN) {
+          if (item.msgStr !== null) {
+            wsInst.send(item.msgStr, { binary: false });
+          } else {
+            wsInst.send(item.msg, { binary: item.isBinary });
+          }
+        }
+      }
     });
 
     wsInst.on('message', (msg, isBinary) => {
@@ -290,21 +305,23 @@ wss.on('connection', (clientWs, req) => {
 
   setupTargetHandlers(targetWs);
 
-  // Exotel -> Python AI Engine (Preserve opcode type)
+  // Exotel -> Python AI Engine (Preserve opcode type & buffer early frames)
   clientWs.on('message', (msg, isBinary) => {
-    if (targetWs.readyState === WebSocket.OPEN) {
-      let msgStr = null;
-      if (typeof msg === 'string') {
-        msgStr = msg;
-      } else if (Buffer.isBuffer(msg) && msg.length > 0 && msg[0] === 123) {
-        msgStr = msg.toString('utf8');
-      }
+    let msgStr = null;
+    if (typeof msg === 'string') {
+      msgStr = msg;
+    } else if (Buffer.isBuffer(msg) && msg.length > 0 && msg[0] === 123) {
+      msgStr = msg.toString('utf8');
+    }
 
+    if (targetWs.readyState === WebSocket.OPEN) {
       if (msgStr !== null) {
         targetWs.send(msgStr, { binary: false });
       } else {
         targetWs.send(msg, { binary: isBinary });
       }
+    } else if (targetWs.readyState === WebSocket.CONNECTING) {
+      pendingBuffer.push({ msg, msgStr, isBinary });
     }
   });
 

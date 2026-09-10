@@ -76,8 +76,9 @@ def detect_microsip_udp_ports() -> list[int]:
                     pid = parts[1]
                     break
         if not pid:
-            print("[MicroSIP Auto-Launcher] MicroSIP softphone is not running. Launching on Desktop...", flush=True)
-            microsip_exe = r"c:\daily_works\superfone_call\MicroSIP-3.22.12\MicroSIP.exe"
+            microsip_exe = os.path.join(os.path.dirname(os.path.abspath(__file__)), "MicroSIP-3.22.12", "microsip.exe")
+            if not os.path.exists(microsip_exe):
+                microsip_exe = r"c:\daily_works\superfone_call\MicroSIP-3.22.12\MicroSIP.exe"
             subprocess.run(["powershell", "-Command", f"Start-Process '{microsip_exe}'"], capture_output=True)
             time.sleep(2.0)
             res = subprocess.run(["cmd", "/c", "tasklist /fo csv"], capture_output=True, text=True)
