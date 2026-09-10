@@ -259,7 +259,18 @@ wss.on('connection', (clientWs, req) => {
 
     wsInst.on('message', (msg, isBinary) => {
       if (clientWs.readyState === WebSocket.OPEN) {
-        clientWs.send(msg, { binary: isBinary });
+        let msgStr = null;
+        if (typeof msg === 'string') {
+          msgStr = msg;
+        } else if (Buffer.isBuffer(msg) && msg.length > 0 && msg[0] === 123) {
+          msgStr = msg.toString('utf8');
+        }
+
+        if (msgStr !== null) {
+          clientWs.send(msgStr, { binary: false });
+        } else {
+          clientWs.send(msg, { binary: isBinary });
+        }
       }
     });
 
@@ -270,7 +281,6 @@ wss.on('connection', (clientWs, req) => {
     wsInst.on('error', (err) => {
       console.error('[Telephony Proxy] ⚠️ Target Engine Error:', err.message);
       if (clientWs.readyState === WebSocket.OPEN && wsInst === targetWs) {
-        // Retry connection to fallback port 9097
         console.log('[Telephony Proxy] 🔄 Retrying connection on fallback port 9097...');
         targetWs = new WebSocket('ws://127.0.0.1:9097/media-stream');
         setupTargetHandlers(targetWs);
@@ -280,10 +290,21 @@ wss.on('connection', (clientWs, req) => {
 
   setupTargetHandlers(targetWs);
 
-  // Exotel -> Python AI Engine
+  // Exotel -> Python AI Engine (Preserve opcode type)
   clientWs.on('message', (msg, isBinary) => {
     if (targetWs.readyState === WebSocket.OPEN) {
-      targetWs.send(msg, { binary: isBinary });
+      let msgStr = null;
+      if (typeof msg === 'string') {
+        msgStr = msg;
+      } else if (Buffer.isBuffer(msg) && msg.length > 0 && msg[0] === 123) {
+        msgStr = msg.toString('utf8');
+      }
+
+      if (msgStr !== null) {
+        targetWs.send(msgStr, { binary: false });
+      } else {
+        targetWs.send(msg, { binary: isBinary });
+      }
     }
   });
 

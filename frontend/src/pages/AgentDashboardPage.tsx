@@ -192,17 +192,17 @@ export const AgentDashboardPage: React.FC<AgentDashboardPageProps> = ({
     handleStatusChange('on_call');
 
     try {
-      await fetch('/api/v1/microsip/originate', {
+      await fetch('/api/telephony/outbound-call', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone_number: phoneToCall, auto_answer: 1 })
+        body: JSON.stringify({ to: phoneToCall })
       });
 
       setTimeout(() => {
         setActiveCall(prev => prev ? { ...prev, status: 'connected' } : null);
       }, 1000);
     } catch (err) {
-      console.error("Call initiation error:", err);
+      console.error("Exotel Outbound Call initiation error:", err);
       setActiveCall(prev => prev ? { ...prev, status: 'connected' } : null);
     }
   };
