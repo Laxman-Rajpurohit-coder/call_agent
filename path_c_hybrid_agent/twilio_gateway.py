@@ -287,7 +287,7 @@ async def handle_media_websocket(request):
                         sample_rate = int(media_format.get("sample_rate", 8000))
                         bit_rate = str(media_format.get("bit_rate", ""))
                         encoding = str(media_format.get("encoding", ""))
-                        session.is_pcm16 = "128" in bit_rate or "pcm" in encoding.lower() or "linear" in encoding.lower()
+                        session.is_pcm16 = "pcm" in encoding.lower() or "linear" in encoding.lower() or "pcm16" in encoding.lower()
                         logger.info("🚀 Media Format Detected: SampleRate=%d, BitRate=%s, Encoding=%s -> is_pcm16=%s", sample_rate, bit_rate, encoding, session.is_pcm16)
 
                         caller_num = start_obj.get("from") or start_obj.get("caller") or "+918830718466"
