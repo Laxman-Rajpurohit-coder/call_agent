@@ -405,27 +405,16 @@ def create_app():
 
 
 
-async def main():
-    global PRECACHED_GREETING_PCM
+if __name__ == "__main__":
     init_db()
-    
     logger.info("⚡ Pre-synthesizing initial greeting for 0ms call setup latency...")
-    PRECACHED_GREETING_PCM = await synthesize_speech(INITIAL_GREETING_TEXT)
+    PRECACHED_GREETING_PCM = asyncio.run(synthesize_speech(INITIAL_GREETING_TEXT))
     logger.info("✅ Initial greeting pre-rendered (%d bytes PCM audio pool ready).", len(PRECACHED_GREETING_PCM) if PRECACHED_GREETING_PCM else 0)
 
-    app = create_app()
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', TWILIO_PORT)
-    await site.start()
-    
     logger.info("=" * 80)
     logger.info("  🚀 LIVE TWILIO GATEWAY (HTTP + WEBSOCKET) READY ON PORT %d", TWILIO_PORT)
     logger.info("  PUBLIC DOMAIN : https://%s", PUBLIC_DOMAIN)
     logger.info("  TWILIO WEBHOOK : https://%s/voice", PUBLIC_DOMAIN)
     logger.info("  MEDIA STREAM   : wss://%s/media", PUBLIC_DOMAIN)
     logger.info("================================================================================")
-    await asyncio.Event().wait()
-
-if __name__ == "__main__":
-    asyncio.run(main())
+    web.run_app(create_app(), host="0.0.0.0", port=TWILIO_PORT)
