@@ -106,8 +106,13 @@ class TwilioCallSession:
 
     async def silence_keepalive_loop(self):
         """Maintains active session loop with zero microphone audio suppression."""
-        while self.is_active and self.ws and not self.ws.closed:
-            await asyncio.sleep(1.0)
+        try:
+            while self.is_active and self.ws and not self.ws.closed:
+                await asyncio.sleep(1.0)
+        except asyncio.CancelledError:
+            pass
+        except Exception as ex:
+            logger.warning("[%s] Silence keepalive exception: %s", getattr(self, 'stream_sid', 'unknown'), ex)
 
     async def send_audio_mulaw(self, pcm_bytes: bytes):
         """Streams 8kHz audio over WebSocket with auto-detection for 16-bit PCM (Exotel) vs G.711 mu-law (Twilio)."""
@@ -144,7 +149,7 @@ class TwilioCallSession:
         total_frames = (len(out_data) + frame_size - 1) // frame_size
         t_start = time.perf_counter()
         for idx in range(total_frames):
-            if self.ws.closed:
+            if not self.ws or self.ws.closed:
                 break
             offset = idx * frame_size
             chunk = out_data[offset:offset + frame_size]
@@ -164,11 +169,14 @@ class TwilioCallSession:
     async def send_initial_greeting(self):
         """Sends live greeting upon Twilio/Exotel stream start in Marwadi."""
         global PRECACHED_GREETING_PCM
-        logger.info("[%s] Sending Live Initial Marwadi Greeting to CPaaS...", self.stream_sid)
-        if PRECACHED_GREETING_PCM is None:
-            PRECACHED_GREETING_PCM = await synthesize_speech(INITIAL_GREETING_TEXT)
-        if PRECACHED_GREETING_PCM and not self.ws.closed:
-            await self.send_audio_mulaw(PRECACHED_GREETING_PCM)
+        try:
+            logger.info("[%s] Sending Live Initial Marwadi Greeting to CPaaS...", self.stream_sid)
+            if PRECACHED_GREETING_PCM is None:
+                PRECACHED_GREETING_PCM = await synthesize_speech(INITIAL_GREETING_TEXT)
+            if PRECACHED_GREETING_PCM and self.ws and not self.ws.closed:
+                await self.send_audio_mulaw(PRECACHED_GREETING_PCM)
+        except Exception as ex:
+            logger.warning("[%s] Error sending initial greeting: %s", getattr(self, 'stream_sid', 'unknown'), ex)
 
     async def process_caller_utterance(self, pcm_bytes: bytes):
         """Executes Path C Pipeline: STT -> Groq LLM -> Cartesia TTS -> Twilio Stream."""
@@ -405,11 +413,18 @@ def create_app():
 
 
 
-if __name__ == "__main__":
+async def main():
+    global PRECACHED_GREETING_PCM
     init_db()
     logger.info("⚡ Pre-synthesizing initial greeting for 0ms call setup latency...")
-    PRECACHED_GREETING_PCM = asyncio.run(synthesize_speech(INITIAL_GREETING_TEXT))
+    PRECACHED_GREETING_PCM = await synthesize_speech(INITIAL_GREETING_TEXT)
     logger.info("✅ Initial greeting pre-rendered (%d bytes PCM audio pool ready).", len(PRECACHED_GREETING_PCM) if PRECACHED_GREETING_PCM else 0)
+
+    app = create_app()
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', TWILIO_PORT)
+    await site.start()
 
     logger.info("=" * 80)
     logger.info("  🚀 LIVE TWILIO GATEWAY (HTTP + WEBSOCKET) READY ON PORT %d", TWILIO_PORT)
@@ -417,4 +432,11 @@ if __name__ == "__main__":
     logger.info("  TWILIO WEBHOOK : https://%s/voice", PUBLIC_DOMAIN)
     logger.info("  MEDIA STREAM   : wss://%s/media", PUBLIC_DOMAIN)
     logger.info("================================================================================")
-    web.run_app(create_app(), host="0.0.0.0", port=TWILIO_PORT)
+    while True:
+        await asyncio.sleep(3600)
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        pass
