@@ -11,6 +11,7 @@ import json
 import base64
 import asyncio
 import audioop
+import wave
 import logging
 from typing import Dict, Any, List, Optional
 from aiohttp import web
@@ -60,6 +61,21 @@ class TwilioCallSession:
         self.is_active = True
         self.is_pcm16 = False
         self.frame_count = 0
+        
+        # Free Local Call Recording (Native 8kHz Telephony WAV Header per Rule 4)
+        rec_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "recordings")
+        os.makedirs(rec_dir, exist_ok=True)
+        self.rec_filename = os.path.join(rec_dir, f"{self.call_sid}.wav")
+        try:
+            self.wav_file = wave.open(self.rec_filename, 'wb')
+            self.wav_file.setnchannels(1)
+            self.wav_file.setsampwidth(2)
+            self.wav_file.setframerate(8000)
+            logger.info("[%s] 🎙️ Free Local Call Recording Started: %s", self.stream_sid, self.rec_filename)
+        except Exception as ex:
+            logger.warning("[%s] Could not open wave recording file: %s", self.stream_sid, ex)
+            self.wav_file = None
+
         self.keepalive_task = asyncio.create_task(self.silence_keepalive_loop())
 
     async def send_mulaw_frame(self, chunk: bytes):
@@ -110,7 +126,14 @@ class TwilioCallSession:
         except Exception:
             pass
 
-        # 2. Convert normalized PCM to G.711 mu-law (8kHz 8-bit mono)
+        # 2. Record outgoing AI speech to local WAV file
+        if getattr(self, 'wav_file', None):
+            try:
+                self.wav_file.writeframes(pcm_bytes)
+            except Exception:
+                pass
+
+        # 3. Convert normalized PCM to G.711 mu-law (8kHz 8-bit mono)
         mulaw_data = audioop.lin2ulaw(pcm_bytes, 2)
         total_frames = (len(mulaw_data) + FRAME_SIZE_MULAW - 1) // FRAME_SIZE_MULAW
 
@@ -146,6 +169,13 @@ class TwilioCallSession:
         """Executes Path C Pipeline: STT -> Groq LLM -> Cartesia TTS -> Twilio Stream."""
         if len(pcm_bytes) < 1600:
             return
+
+        # Record incoming customer speech to local WAV file
+        if getattr(self, 'wav_file', None):
+            try:
+                self.wav_file.writeframes(pcm_bytes)
+            except Exception:
+                pass
 
         t0 = time.time()
         logger.info("[%s] 🎙️ Processing Telephony Utterance (%d bytes)...", self.stream_sid, len(pcm_bytes))
@@ -187,6 +217,12 @@ class TwilioCallSession:
         self.is_active = False
         if hasattr(self, 'keepalive_task') and self.keepalive_task:
             self.keepalive_task.cancel()
+        if getattr(self, 'wav_file', None):
+            try:
+                self.wav_file.close()
+                logger.info("[%s] 🎙️ Free Local Call Recording Saved: %s", self.stream_sid, self.rec_filename)
+            except Exception:
+                pass
         duration = round(time.time() - self.start_time, 2)
         handle_call_end(self.call_sid, self.conversation_history, status="completed", duration_s=duration)
         logger.info("[%s] Telephony Session Finished: duration=%.2fs CRM Saved.", self.stream_sid, duration)
