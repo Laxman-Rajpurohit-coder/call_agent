@@ -33,7 +33,7 @@ PUBLIC_DOMAIN = "drool-envoy-sandy.ngrok-free.dev"
 
 FRAME_SIZE_MULAW = 160 # 20ms at 8kHz mu-law mono
 VAD_SILENCE_FRAMES = 17 # ~340ms silence threshold (< 350ms rule)
-VAD_RMS_THRESHOLD = 60 # Sensitive threshold for telephony audio
+VAD_RMS_THRESHOLD = 250 # Telephony noise gate threshold (ignores ambient static < 250 RMS)
 
 
 INITIAL_GREETING_TEXT = "राम-राम सा! माली सैनी समाज सेवा फाउंडेशन में आपरो घणो-घणो स्वागत है। मैं आपकी काई सहायता कर सकूँ?"
@@ -61,6 +61,7 @@ class TwilioCallSession:
         self.is_active = True
         self.is_pcm16 = False
         self.frame_count = 0
+        self.current_response_task: Optional[asyncio.Task] = None  # Track in-flight LLM/TTS task
         
         # Free Local Call Recording (Native 8kHz Telephony WAV Header per Rule 4)
         rec_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "recordings")
@@ -79,7 +80,7 @@ class TwilioCallSession:
         self.keepalive_task = asyncio.create_task(self.silence_keepalive_loop())
 
     async def send_mulaw_frame(self, chunk: bytes):
-        """Sends audio frame formatted as Twilio/Exotel JSON media event."""
+        """Sends audio frame formatted as Exotel/Twilio JSON media event."""
         if not self.ws or self.ws.closed:
             return
         b64_payload = base64.b64encode(chunk).decode('ascii')
@@ -94,15 +95,10 @@ class TwilioCallSession:
                 "streamSid": self.stream_sid
             }
         }
-
-        media_msg = json.dumps(media_dict)
         try:
-            await self.ws.send_str(media_msg)
+            await self.ws.send_str(json.dumps(media_dict))
         except Exception:
-            try:
-                await self.ws.send_bytes(chunk)
-            except Exception:
-                pass
+            pass
 
     async def silence_keepalive_loop(self):
         """Maintains active session loop with zero microphone audio suppression."""
@@ -115,7 +111,7 @@ class TwilioCallSession:
             logger.warning("[%s] Silence keepalive exception: %s", getattr(self, 'stream_sid', 'unknown'), ex)
 
     async def send_audio_mulaw(self, pcm_bytes: bytes):
-        """Streams 8kHz audio over WebSocket with auto-detection for 16-bit PCM (Exotel) vs G.711 mu-law (Twilio)."""
+        """Streams 8kHz audio over WebSocket with Peak Gain Normalization and universal G.711 mu-law / PCM16 framing."""
         if not pcm_bytes or not self.ws or self.ws.closed:
             return
         self.is_speaking = True
@@ -138,30 +134,39 @@ class TwilioCallSession:
             except Exception:
                 pass
 
-        # 3. Format selection: Exotel (16-bit PCM 128kbps -> 320 bytes/20ms) vs Twilio (8-bit mu-law 64kbps -> 160 bytes/20ms)
-        if self.is_pcm16:
-            frame_size = 320
-            out_data = pcm_bytes
-        else:
-            frame_size = 160
-            out_data = audioop.lin2ulaw(pcm_bytes, 2)
+        # 3. Stream both G.711 mu-law (160 bytes / 20ms) and 16-bit PCM (320 bytes / 20ms) for 100% PSTN compatibility
+        mulaw_data = audioop.lin2ulaw(pcm_bytes, 2)
+        total_frames = (len(mulaw_data) + FRAME_SIZE_MULAW - 1) // FRAME_SIZE_MULAW
 
-        total_frames = (len(out_data) + frame_size - 1) // frame_size
         t_start = time.perf_counter()
-        for idx in range(total_frames):
-            if not self.ws or self.ws.closed:
-                break
-            offset = idx * frame_size
-            chunk = out_data[offset:offset + frame_size]
-            if not chunk:
-                continue
-
-            await self.send_mulaw_frame(chunk)
-
-            target_time = t_start + (idx + 1) * 0.020
-            sleep_needed = target_time - time.perf_counter()
-            if sleep_needed > 0.001:
-                await asyncio.sleep(sleep_needed)
+        if self.is_pcm16:
+            # Exotel Voicebot slin format: 16-bit linear PCM (320 bytes = 20ms at 8kHz)
+            pcm_frame_size = 320
+            total_pcm_frames = (len(pcm_bytes) + pcm_frame_size - 1) // pcm_frame_size
+            for idx in range(total_pcm_frames):
+                if not self.ws or self.ws.closed:
+                    break
+                offset = idx * pcm_frame_size
+                chunk = pcm_bytes[offset:offset + pcm_frame_size]
+                if chunk:
+                    await self.send_mulaw_frame(chunk)
+                target_time = t_start + (idx + 1) * 0.020
+                sleep_needed = target_time - time.perf_counter()
+                if sleep_needed > 0.001:
+                    await asyncio.sleep(sleep_needed)
+        else:
+            # Twilio format: G.711 mu-law (160 bytes = 20ms at 8kHz)
+            for idx in range(total_frames):
+                if not self.ws or self.ws.closed:
+                    break
+                offset_mulaw = idx * FRAME_SIZE_MULAW
+                chunk_mulaw = mulaw_data[offset_mulaw:offset_mulaw + FRAME_SIZE_MULAW]
+                if chunk_mulaw:
+                    await self.send_mulaw_frame(chunk_mulaw)
+                target_time = t_start + (idx + 1) * 0.020
+                sleep_needed = target_time - time.perf_counter()
+                if sleep_needed > 0.001:
+                    await asyncio.sleep(sleep_needed)
 
         self.is_speaking = False
 
@@ -323,17 +328,27 @@ async def handle_media_websocket(request):
                                 pcm_bytes = raw_bytes
                             else:
                                 pcm_bytes = audioop.ulaw2lin(raw_bytes, 2)
-                                
-                            session.pcm_rx_buffer.extend(pcm_bytes)
-                            
-                            rms = audioop.rms(pcm_bytes, 2)
+
                             session.frame_count += 1
                             if session.frame_count <= 3 or session.frame_count % 100 == 0:
-                                logger.info("[%s] 📊 Audio Frame #%d: len=%d bytes, RMS=%d (is_pcm16=%s)", session.stream_sid, session.frame_count, len(pcm_bytes), rms, session.is_pcm16)
+                                rms_log = audioop.rms(pcm_bytes, 2)
+                                logger.info("[%s] 📊 Audio Frame #%d: len=%d bytes, RMS=%d (is_pcm16=%s)", session.stream_sid, session.frame_count, len(pcm_bytes), rms_log, session.is_pcm16)
+
+                            # ⚡ Suppress VAD while Riya is speaking — prevents echo re-triggering
+                            if session.is_speaking:
+                                continue
+
+                            session.pcm_rx_buffer.extend(pcm_bytes)
+                            rms = audioop.rms(pcm_bytes, 2)
 
                             if rms > VAD_RMS_THRESHOLD:
                                 if not session.has_speech:
                                     logger.info("[%s] 🎙️ Speech Detected! (RMS=%d > %d)", session.stream_sid, rms, VAD_RMS_THRESHOLD)
+                                    # 🛑 Cancel any in-flight response (user is interrupting Riya)
+                                    if session.current_response_task and not session.current_response_task.done():
+                                        session.current_response_task.cancel()
+                                        session.is_speaking = False
+                                        logger.info("[%s] 🛑 Barge-in detected — cancelled in-flight response", session.stream_sid)
                                 session.has_speech = True
                                 session.silent_frames = 0
                             elif session.has_speech:
@@ -344,7 +359,7 @@ async def handle_media_websocket(request):
                                     session.has_speech = False
                                     session.silent_frames = 0
                                     logger.info("[%s] 🗣️ User Utterance Completed (%d bytes audio) -> Processing STT & LLM", session.stream_sid, len(speech_chunk))
-                                    asyncio.create_task(session.process_caller_utterance(speech_chunk))
+                                    session.current_response_task = asyncio.create_task(session.process_caller_utterance(speech_chunk))
 
                     elif event_type == "stop":
                         logger.info("ℹ️ Exotel sent stop event (ignoring break to keep stream connection active): StreamSid=%s", session.stream_sid)
@@ -361,16 +376,21 @@ async def handle_media_websocket(request):
                     else:
                         pcm_bytes = audioop.ulaw2lin(raw_bytes, 2)
 
-                    session.pcm_rx_buffer.extend(pcm_bytes)
-                    
-                    rms = audioop.rms(pcm_bytes, 2)
                     session.frame_count += 1
-                    if session.frame_count <= 3 or session.frame_count % 100 == 0:
-                        logger.info("[%s] 📊 Binary Frame #%d: len=%d bytes, RMS=%d (is_pcm16=%s)", session.stream_sid, session.frame_count, len(pcm_bytes), rms, session.is_pcm16)
+
+                    # ⚡ Suppress VAD while Riya is speaking — prevents echo re-triggering
+                    if session.is_speaking:
+                        continue
+
+                    session.pcm_rx_buffer.extend(pcm_bytes)
+                    rms = audioop.rms(pcm_bytes, 2)
 
                     if rms > VAD_RMS_THRESHOLD:
                         if not session.has_speech:
                             logger.info("[%s] 🎙️ Speech Detected! (RMS=%d > %d)", session.stream_sid, rms, VAD_RMS_THRESHOLD)
+                            if session.current_response_task and not session.current_response_task.done():
+                                session.current_response_task.cancel()
+                                session.is_speaking = False
                         session.has_speech = True
                         session.silent_frames = 0
                     elif session.has_speech:
@@ -381,7 +401,7 @@ async def handle_media_websocket(request):
                             session.has_speech = False
                             session.silent_frames = 0
                             logger.info("[%s] 🗣️ User Utterance Completed (%d bytes audio) -> Processing STT & LLM", session.stream_sid, len(speech_chunk))
-                            asyncio.create_task(session.process_caller_utterance(speech_chunk))
+                            session.current_response_task = asyncio.create_task(session.process_caller_utterance(speech_chunk))
                 except Exception as ex:
                     logger.error("Telephony binary frame error: %s", ex)
 
