@@ -413,6 +413,14 @@ def create_app():
 
 
 
+import traceback
+
+def handle_async_exception(loop, context):
+    msg = context.get("exception", context.get("message"))
+    logger.error("Unhandled Exception in Event Loop: %s", msg)
+    if "exception" in context and context["exception"]:
+        logger.error("".join(traceback.format_exception(context["exception"])))
+
 async def main():
     global PRECACHED_GREETING_PCM
     init_db()
@@ -432,11 +440,15 @@ async def main():
     logger.info("  TWILIO WEBHOOK : https://%s/voice", PUBLIC_DOMAIN)
     logger.info("  MEDIA STREAM   : wss://%s/media", PUBLIC_DOMAIN)
     logger.info("================================================================================")
-    while True:
-        await asyncio.sleep(3600)
+    await asyncio.Event().wait()
 
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.set_exception_handler(handle_async_exception)
+        loop.run_until_complete(main())
     except (KeyboardInterrupt, SystemExit):
         pass
+    except Exception as ex:
+        logger.error("Fatal Gateway Crash: %s\n%s", ex, traceback.format_exc())
