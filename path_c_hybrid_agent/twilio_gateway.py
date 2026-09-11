@@ -110,7 +110,7 @@ class TwilioCallSession:
             await asyncio.sleep(1.0)
 
     async def send_audio_mulaw(self, pcm_bytes: bytes):
-        """Converts 8kHz PCM audio to G.711 mu-law (PCMU) with Peak Gain Normalization and streams over WebSocket."""
+        """Streams 8kHz audio over WebSocket with auto-detection for 16-bit PCM (Exotel) vs G.711 mu-law (Twilio)."""
         if not pcm_bytes or not self.ws or self.ws.closed:
             return
         self.is_speaking = True
@@ -133,16 +133,21 @@ class TwilioCallSession:
             except Exception:
                 pass
 
-        # 3. Convert normalized PCM to G.711 mu-law (8kHz 8-bit mono)
-        mulaw_data = audioop.lin2ulaw(pcm_bytes, 2)
-        total_frames = (len(mulaw_data) + FRAME_SIZE_MULAW - 1) // FRAME_SIZE_MULAW
+        # 3. Format selection: Exotel (16-bit PCM 128kbps -> 320 bytes/20ms) vs Twilio (8-bit mu-law 64kbps -> 160 bytes/20ms)
+        if self.is_pcm16:
+            frame_size = 320
+            out_data = pcm_bytes
+        else:
+            frame_size = 160
+            out_data = audioop.lin2ulaw(pcm_bytes, 2)
 
+        total_frames = (len(out_data) + frame_size - 1) // frame_size
         t_start = time.perf_counter()
         for idx in range(total_frames):
             if self.ws.closed:
                 break
-            offset = idx * FRAME_SIZE_MULAW
-            chunk = mulaw_data[offset:offset + FRAME_SIZE_MULAW]
+            offset = idx * frame_size
+            chunk = out_data[offset:offset + frame_size]
             if not chunk:
                 continue
 
@@ -287,7 +292,7 @@ async def handle_media_websocket(request):
                         sample_rate = int(media_format.get("sample_rate", 8000))
                         bit_rate = str(media_format.get("bit_rate", ""))
                         encoding = str(media_format.get("encoding", ""))
-                        session.is_pcm16 = "pcm" in encoding.lower() or "linear" in encoding.lower() or "pcm16" in encoding.lower()
+                        session.is_pcm16 = "128" in bit_rate or "pcm" in encoding.lower() or "linear" in encoding.lower() or "l16" in encoding.lower() or encoding.lower() == "base64"
                         logger.info("🚀 Media Format Detected: SampleRate=%d, BitRate=%s, Encoding=%s -> is_pcm16=%s", sample_rate, bit_rate, encoding, session.is_pcm16)
 
                         caller_num = start_obj.get("from") or start_obj.get("caller") or "+918830718466"
@@ -305,7 +310,8 @@ async def handle_media_websocket(request):
                         )
                         if b64_payload:
                             raw_bytes = base64.b64decode(b64_payload)
-                            if session.is_pcm16:
+                            if len(raw_bytes) >= 320 or session.is_pcm16:
+                                session.is_pcm16 = True
                                 pcm_bytes = raw_bytes
                             else:
                                 pcm_bytes = audioop.ulaw2lin(raw_bytes, 2)
@@ -341,7 +347,8 @@ async def handle_media_websocket(request):
             elif msg.type == web.WSMsgType.BINARY:
                 try:
                     raw_bytes = msg.data
-                    if session.is_pcm16:
+                    if len(raw_bytes) >= 320 or session.is_pcm16:
+                        session.is_pcm16 = True
                         pcm_bytes = raw_bytes
                     else:
                         pcm_bytes = audioop.ulaw2lin(raw_bytes, 2)
