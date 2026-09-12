@@ -99,6 +99,64 @@ app.post('/api/telephony/originate', async (req, res) => {
   }
 });
 
+// ─── Exotel Outbound Scripted Call (Dashboard "Call" Button) ───────────────
+// Triggers an outbound call from ExoPhone → Lead's number via Exotel API.
+// Exotel connects the call through Flow 1337835 (Voicebot applet = Riya AI).
+app.post('/api/telephony/outbound-call', async (req, res) => {
+  const { to, contact_name, contact_id } = req.body;
+  if (!to) return res.status(400).json({ success: false, error: 'Missing "to" phone number' });
+
+  const accountSid  = process.env.EXOTEL_ACCOUNT_SID  || 'snazzyitsolutions1';
+  const apiKey      = process.env.EXOTEL_API_KEY       || '';
+  const apiToken    = process.env.EXOTEL_API_TOKEN     || '';
+  const virtualNum  = process.env.EXOTEL_VIRTUAL_NUMBER || '08047283364';
+
+  // Clean phone number — strip spaces, ensure 10-digit or +91 format
+  const cleanTo = to.replace(/\s+/g, '').replace(/^\+91/, '0');
+
+  try {
+    // Exotel Calls API v2 — https://developer.exotel.com/api/#calls-create
+    const exotelUrl = `https://api.exotel.com/v1/Accounts/${accountSid}/Calls/connect.json`;
+    const params = new URLSearchParams({
+      From:           cleanTo,           // caller's mobile (Exotel calls this number first)
+      To:             virtualNum,        // ExoPhone (Exotel bridges to this)
+      CallerId:       virtualNum,        // displayed on caller's screen
+      // Route through the Voicebot flow so Riya AI handles the call
+      Url:            `https://my.exotel.in/snazzyitsolutions1/exoml/start/1337835`,
+      StatusCallback: `https://drool-envoy-sandy.ngrok-free.dev/api/telephony/webhook`,
+      CallType:       'trans',
+      TimeLimit:      '3600',
+      TimeOut:        '30',
+    });
+
+    const credentials = Buffer.from(`${apiKey}:${apiToken}`).toString('base64');
+    const response = await fetch(exotelUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${credentials}`,
+        'Content-Type':  'application/x-www-form-urlencoded',
+      },
+      body: params.toString()
+    });
+
+    const data = await response.json();
+    console.log(`[Outbound Call] To=${cleanTo} | Status=${response.status} | Exotel:`, JSON.stringify(data).slice(0, 200));
+
+    if (response.ok) {
+      const callSid = data?.Call?.Sid || data?.call_sid || 'unknown';
+      res.json({ success: true, call_sid: callSid, to: cleanTo, message: `Outbound call initiated to ${cleanTo}` });
+    } else {
+      res.status(response.status).json({ success: false, error: data?.RestException?.Message || 'Exotel API error', raw: data });
+    }
+  } catch (err) {
+    console.error('[Outbound Call] Error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+// ───────────────────────────────────────────────────────────────────────────
+
+
+
 // Seed default clinic account and admin user if DB is empty
 async function seedDefaultData() {
   try {
