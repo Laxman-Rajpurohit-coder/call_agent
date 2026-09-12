@@ -100,58 +100,7 @@ app.post('/api/telephony/originate', async (req, res) => {
   }
 });
 
-// ─── Exotel Outbound AI Call (Dashboard "Call" Button) ────────────────────
-// Single-leg call: Exotel calls the lead's mobile, and when they pick up,
-// immediately executes our /voice ExoML → Riya AI Voicebot handles the call.
-app.post('/api/telephony/outbound-call', async (req, res) => {
-  const { to, contact_name, contact_id } = req.body;
-  if (!to) return res.status(400).json({ success: false, error: 'Missing "to" phone number' });
 
-  const accountSid  = process.env.EXOTEL_ACCOUNT_SID   || 'snazzyitsolutions1';
-  const apiKey      = process.env.EXOTEL_API_KEY        || '';
-  const apiToken    = process.env.EXOTEL_API_TOKEN      || '';
-  const virtualNum  = process.env.EXOTEL_VIRTUAL_NUMBER || '08047283364';
-
-  // Clean phone number — strip spaces, convert +91XXXXXXXXXX → 0XXXXXXXXXX
-  const cleanTo = to.replace(/\s+/g, '').replace(/^\+91/, '0');
-
-  try {
-    const exotelUrl = `https://api.exotel.com/v1/Accounts/${accountSid}/Calls/connect.json`;
-    const params = new URLSearchParams({
-      From:           cleanTo,    // Lead's mobile — Exotel calls them
-      CallerId:       virtualNum, // ExoPhone shown on caller ID
-      // When lead picks up → Exotel fetches this URL → returns Voicebot ExoML → Riya AI starts
-      Url:            `https://drool-envoy-sandy.ngrok-free.dev/voice`,
-      StatusCallback: `https://drool-envoy-sandy.ngrok-free.dev/api/telephony/webhook`,
-      TimeLimit:      '3600',
-      TimeOut:        '30',
-    });
-
-    const credentials = Buffer.from(`${apiKey}:${apiToken}`).toString('base64');
-    const response = await fetch(exotelUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Basic ${credentials}`,
-        'Content-Type':  'application/x-www-form-urlencoded',
-      },
-      body: params.toString()
-    });
-
-    const data = await response.json();
-    console.log(`[Exotel Outbound Call] Triggered call to ${cleanTo}:`, JSON.stringify(data, null, 2));
-
-    if (response.ok) {
-      const callSid = data?.Call?.Sid || data?.call_sid || 'unknown';
-      res.json({ success: true, call_sid: callSid, to: cleanTo, message: `Outbound AI call initiated to ${cleanTo}` });
-    } else {
-      res.status(response.status).json({ success: false, error: data?.RestException?.Message || 'Exotel API error', raw: data });
-    }
-  } catch (err) {
-    console.error('[Outbound Call] Error:', err.message);
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-// ───────────────────────────────────────────────────────────────────────────
 
 
 

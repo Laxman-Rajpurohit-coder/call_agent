@@ -55,19 +55,21 @@ router.post('/outbound-call', async (req, res) => {
       return res.status(500).json({ success: false, error: 'Exotel API key or token missing in .env' });
     }
 
+    const cleanTo = to.replace(/\s+/g, '').replace(/^\+91/, '0');
     const authHeader = 'Basic ' + Buffer.from(`${apiKey}:${apiToken}`).toString('base64');
     const exotelUrl = `https://api.exotel.com/v1/Accounts/${accountSid}/Calls/connect.json`;
 
-    const webhookUrl = `https://${req.headers.host || 'drool-envoy-sandy.ngrok-free.dev'}/api/telephony/webhook`;
+    // Exact Exotel Flow URL for Voicebot flow (Flow 1337835 attached to ExoPhone 08047283364)
+    const flowUrl = `https://my.exotel.com/${accountSid}/exoml/start_voice/1337835`;
     const params = new URLSearchParams({
-      From: to,
+      From: cleanTo,
       To: callerId,
       CallerId: callerId,
-      Url: webhookUrl,
-      Method: 'POST',
-      CallType: 'trans'
+      Url: flowUrl,
+      CallType: 'trans',
+      TimeLimit: '3600',
+      TimeOut: '30'
     });
-
 
     const exotelRes = await fetch(exotelUrl, {
       method: 'POST',
@@ -79,7 +81,7 @@ router.post('/outbound-call', async (req, res) => {
     });
 
     const data = await exotelRes.json();
-    console.log(`[Exotel Outbound Call] Triggered call to ${to}:`, data);
+    console.log(`[Exotel Outbound Call] Triggered call to ${cleanTo} via Flow ${flowUrl}:`, data);
     res.json({ success: true, data });
   } catch (err) {
     console.error('[Exotel Outbound Call Error]:', err.message);
