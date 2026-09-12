@@ -62,6 +62,7 @@ class TwilioCallSession:
         self.is_pcm16 = False
         self.frame_count = 0
         self.current_response_task: Optional[asyncio.Task] = None  # Track in-flight LLM/TTS task
+        self.greeting_end_time: float = 0.0   # Set when greeting finishes — blocks barge-in during greeting
         
         # Free Local Call Recording (Native 8kHz Telephony WAV Header per Rule 4)
         rec_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "recordings")
@@ -180,6 +181,12 @@ class TwilioCallSession:
                 PRECACHED_GREETING_PCM = await synthesize_speech(INITIAL_GREETING_TEXT)
             if PRECACHED_GREETING_PCM and self.ws and not self.ws.closed:
                 await self.send_audio_mulaw(PRECACHED_GREETING_PCM)
+            # ⚡ Cooldown: block VAD for 1.5s after greeting to let echo clear
+            self.greeting_end_time = time.time() + 1.5
+            logger.info("[%s] ✅ Greeting sent. VAD blocked until %.1fs", self.stream_sid, self.greeting_end_time)
+        except asyncio.CancelledError:
+            self.is_speaking = False
+            logger.info("[%s] Greeting cancelled (barge-in)", self.stream_sid)
         except Exception as ex:
             logger.warning("[%s] Error sending initial greeting: %s", getattr(self, 'stream_sid', 'unknown'), ex)
 
@@ -338,14 +345,18 @@ async def handle_media_websocket(request):
                             if session.is_speaking:
                                 continue
 
+                            # ⚡ Suppress VAD during post-greeting cooldown (1.5s after greeting ends)
+                            if time.time() < session.greeting_end_time:
+                                continue
+
                             session.pcm_rx_buffer.extend(pcm_bytes)
                             rms = audioop.rms(pcm_bytes, 2)
 
                             if rms > VAD_RMS_THRESHOLD:
                                 if not session.has_speech:
                                     logger.info("[%s] 🎙️ Speech Detected! (RMS=%d > %d)", session.stream_sid, rms, VAD_RMS_THRESHOLD)
-                                    # 🛑 Cancel any in-flight response (user is interrupting Riya)
-                                    if session.current_response_task and not session.current_response_task.done():
+                                    # 🛑 Cancel in-flight response only on strong barge-in (RMS > 800 = real speech, not echo)
+                                    if rms > 800 and session.current_response_task and not session.current_response_task.done():
                                         session.current_response_task.cancel()
                                         session.is_speaking = False
                                         logger.info("[%s] 🛑 Barge-in detected — cancelled in-flight response", session.stream_sid)
@@ -360,6 +371,7 @@ async def handle_media_websocket(request):
                                     session.silent_frames = 0
                                     logger.info("[%s] 🗣️ User Utterance Completed (%d bytes audio) -> Processing STT & LLM", session.stream_sid, len(speech_chunk))
                                     session.current_response_task = asyncio.create_task(session.process_caller_utterance(speech_chunk))
+
 
                     elif event_type == "stop":
                         logger.info("ℹ️ Exotel sent stop event (ignoring break to keep stream connection active): StreamSid=%s", session.stream_sid)
@@ -382,13 +394,17 @@ async def handle_media_websocket(request):
                     if session.is_speaking:
                         continue
 
+                    # ⚡ Suppress VAD during post-greeting cooldown
+                    if time.time() < session.greeting_end_time:
+                        continue
+
                     session.pcm_rx_buffer.extend(pcm_bytes)
                     rms = audioop.rms(pcm_bytes, 2)
 
                     if rms > VAD_RMS_THRESHOLD:
                         if not session.has_speech:
                             logger.info("[%s] 🎙️ Speech Detected! (RMS=%d > %d)", session.stream_sid, rms, VAD_RMS_THRESHOLD)
-                            if session.current_response_task and not session.current_response_task.done():
+                            if rms > 800 and session.current_response_task and not session.current_response_task.done():
                                 session.current_response_task.cancel()
                                 session.is_speaking = False
                         session.has_speech = True
