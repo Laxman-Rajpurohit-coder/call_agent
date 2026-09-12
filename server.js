@@ -100,11 +100,9 @@ app.post('/api/telephony/originate', async (req, res) => {
   }
 });
 
-// ─── Exotel Outbound Scripted Call (Dashboard "Call" Button) ───────────────
-// How it works:
-//   From = ExoPhone (Exotel runs Flow 1337835 on this leg → Riya AI voicebot starts)
-//   To   = Lead's mobile (Exotel dials them and bridges the two legs together)
-// Result: Lead picks up → Riya AI is already speaking via Voicebot applet.
+// ─── Exotel Outbound AI Call (Dashboard "Call" Button) ────────────────────
+// Single-leg call: Exotel calls the lead's mobile, and when they pick up,
+// immediately executes our /voice ExoML → Riya AI Voicebot handles the call.
 app.post('/api/telephony/outbound-call', async (req, res) => {
   const { to, contact_name, contact_id } = req.body;
   if (!to) return res.status(400).json({ success: false, error: 'Missing "to" phone number' });
@@ -120,13 +118,11 @@ app.post('/api/telephony/outbound-call', async (req, res) => {
   try {
     const exotelUrl = `https://api.exotel.com/v1/Accounts/${accountSid}/Calls/connect.json`;
     const params = new URLSearchParams({
-      From:           cleanTo,      // Lead's mobile — Exotel calls them first
-      To:             virtualNum,   // ExoPhone — bridged after lead picks up
-      CallerId:       virtualNum,   // CLI shown on lead's phone
-      // Our /voice webhook returns Exotel Voicebot ExoML → triggers Riya AI
+      From:           cleanTo,    // Lead's mobile — Exotel calls them
+      CallerId:       virtualNum, // ExoPhone shown on caller ID
+      // When lead picks up → Exotel fetches this URL → returns Voicebot ExoML → Riya AI starts
       Url:            `https://drool-envoy-sandy.ngrok-free.dev/voice`,
       StatusCallback: `https://drool-envoy-sandy.ngrok-free.dev/api/telephony/webhook`,
-      CallType:       'trans',
       TimeLimit:      '3600',
       TimeOut:        '30',
     });

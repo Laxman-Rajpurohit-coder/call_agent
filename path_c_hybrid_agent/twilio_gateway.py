@@ -255,7 +255,7 @@ class TwilioCallSession:
 
 
 async def handle_voice_webhook(request):
-    """HTTP POST/GET /voice & /api/telephony/webhook Endpoint: Returns ExoML/TwiML for Voicebot streaming."""
+    """HTTP POST/GET /voice: Returns ExoML that Exotel fetches on outbound call pickup → starts Voicebot."""
     if request.headers.get("Upgrade", "").lower() == "websocket" or "sec-websocket-key" in request.headers:
         logger.info("⚡ Incoming WebSocket Upgrade on Webhook Route from %s -> Forwarding to WebSocket Handler", request.remote)
         return await handle_media_websocket(request)
@@ -264,14 +264,14 @@ async def handle_voice_webhook(request):
     scheme = "wss" if "ngrok" in host or request.scheme == "https" else "ws"
     ws_url = f"{scheme}://{host}/media-stream"
 
-    # Exotel Voicebot ExoML — works for both inbound flow and outbound API Url param
-    # The <connect> element with wss:// URL triggers the Voicebot applet on Exotel
+    # Exotel ExoML for Voicebot — fetched by Exotel when the called number picks up.
+    # <Stream> tag opens the WebSocket media stream for bidirectional audio (same as Voicebot applet).
     exoml_response = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <connect action="{ws_url}"/>
+    <Stream bidirectional="true" action="{ws_url}"/>
 </Response>"""
 
-    logger.info("📥 Incoming CPaaS Webhook from %s (Host: %s) -> Returning Exotel Voicebot ExoML: %s", request.remote, host, ws_url)
+    logger.info("📥 CPaaS Webhook from %s -> Returning ExoML Stream: %s", request.remote, ws_url)
     return web.Response(text=exoml_response, content_type="text/xml")
 
 
