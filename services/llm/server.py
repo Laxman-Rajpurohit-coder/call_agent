@@ -5,7 +5,10 @@ import json
 import re
 import aiohttp
 from aiohttp import web
-from llama_cpp import Llama
+try:
+    from llama_cpp import Llama
+except ImportError:
+    Llama = None
 
 MODELS_DIR = r"c:\daily_works\superfone_call\models"
 LLM_MODEL = os.path.join(MODELS_DIR, "qwen2.5-1.5b-instruct-q4_k_m.gguf")
@@ -73,16 +76,22 @@ class LLMServer:
         self.lock = None
 
     async def start(self):
-        print(f"Loading LLM model once from {LLM_MODEL}...")
-        self.llm = Llama(model_path=LLM_MODEL, n_ctx=2048, n_threads=8, n_batch=512, verbose=False)
         self.lock = asyncio.Lock()
-        # Warmup pass to pre-allocate KV cache and JIT execution structures
-        self.llm.create_chat_completion(
-            messages=[{"role": "user", "content": "hi"}],
-            max_tokens=2,
-            temperature=0.1
-        )
-        print("LLM model loaded and pre-warmed successfully.")
+        if Llama and os.path.exists(LLM_MODEL):
+            try:
+                print(f"Loading LLM model once from {LLM_MODEL}...")
+                self.llm = Llama(model_path=LLM_MODEL, n_ctx=2048, n_threads=8, n_batch=512, verbose=False)
+                self.llm.create_chat_completion(
+                    messages=[{"role": "user", "content": "hi"}],
+                    max_tokens=2,
+                    temperature=0.1
+                )
+                print("LLM GGUF model loaded and pre-warmed successfully.")
+            except Exception as e:
+                print(f"LLM GGUF load warning ({e}). Active mode: Groq Cloud API.")
+                self.llm = None
+        else:
+            print("LLM GGUF model not found or llama_cpp not available. Active mode: Groq Cloud API.")
 
         app = web.Application()
         app.router.add_post('/llm', self.handle_llm)

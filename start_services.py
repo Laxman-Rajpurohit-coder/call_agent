@@ -9,24 +9,33 @@ try:
 except Exception:
     pass
 
-# Load environment variables from .env file
-env_file = r"c:\daily_works\superfone_call\.env"
-if os.path.exists(env_file):
-    with open(env_file, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if line and "=" in line and not line.startswith("#"):
-                k, v = line.split("=", 1)
-                os.environ[k.strip()] = v.strip().strip('"').strip("'")
-    print(f"[Launcher] Loaded .env configuration (Deepgram, Groq, Cartesia API keys active).")
+from pathlib import Path
 
-ROOT_DIR = r"c:\daily_works\superfone_call"
-venv_python = r"c:\daily_works\superfone_call\venv\Scripts\python.exe"
+# Multi-Path .env resolution per Rule 4
+possible_envs = [
+    Path(__file__).parent / ".env",
+    Path(__file__).parent.parent / ".env",
+    Path(r"c:\daily_works\superfone_call\.env")
+]
+
+for env_path in possible_envs:
+    if env_path.exists():
+        with open(env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and "=" in line and not line.startswith("#"):
+                    k, v = line.split("=", 1)
+                    os.environ[k.strip()] = v.strip().strip('"').strip("'")
+        print(f"[Launcher] Loaded .env configuration from {env_path}")
+        break
+
+ROOT_DIR = str(Path(__file__).parent.resolve())
+venv_python = os.path.join(ROOT_DIR, "venv", "Scripts", "python.exe")
 python_bin = venv_python if os.path.exists(venv_python) else sys.executable
 
 SERVICES = [
-    {"name": "Dashboard Platform", "port": 9090, "cmd": [python_bin, "-m", "services.dashboard.app.main"], "env": {}},
-    {"name": "Audio Studio Server", "port": 9096, "cmd": [python_bin, "-m", "services.audio_studio.studio_server"], "env": {}},
+    {"name": "Dashboard Platform", "port": 9090, "cmd": [python_bin, "-m", "uvicorn", "services.dashboard.app.main:app", "--port", "9090", "--host", "0.0.0.0"], "env": {}},
+    {"name": "Telephony AI Gateway", "port": 9096, "cmd": [python_bin, "path_c_hybrid_agent/twilio_gateway.py"], "env": {}},
     {"name": "TTS Worker", "port": 9095, "cmd": [python_bin, "-m", "services.tts.worker"], "env": {}},
     {"name": "STT Worker", "port": 9094, "cmd": [python_bin, "-m", "services.stt.worker"], "env": {"WHISPER_MODEL": "base"}},
     {"name": "LLM Server", "port": 9093, "cmd": [python_bin, "-m", "services.llm.server"], "env": {}},

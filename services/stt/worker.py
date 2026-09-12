@@ -4,9 +4,10 @@ import asyncio
 import re
 from concurrent.futures import ProcessPoolExecutor
 from aiohttp import web
-import numpy as np
-from faster_whisper import WhisperModel
-from scipy.signal import resample_poly
+try:
+    from faster_whisper import WhisperModel
+except ImportError:
+    WhisperModel = None
 
 # Global variable inside each worker process
 whisper_model = None
@@ -14,10 +15,16 @@ whisper_model = None
 def init_worker():
     """Pool initializer. Loads the model ONCE at process startup."""
     global whisper_model
+    if WhisperModel is None:
+        return
     os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
     model_name = os.environ.get("WHISPER_MODEL", "base")
-    whisper_model = WhisperModel(model_name, device="cpu", compute_type="int8", cpu_threads=6)
-    print(f"[STT Worker {os.getpid()}] Multilingual Model ({model_name}) loaded once at process startup.")
+    try:
+        whisper_model = WhisperModel(model_name, device="cpu", compute_type="int8", cpu_threads=6)
+        print(f"[STT Worker {os.getpid()}] Multilingual Model ({model_name}) loaded once at process startup.")
+    except Exception as ex:
+        print(f"[STT Worker {os.getpid()}] Local model warning: {ex}")
+        whisper_model = None
 
 def detect_repetition(text: str) -> tuple[bool, str, int]:
     """Detect runaway n-gram repetition loops in speech transcripts."""
@@ -238,9 +245,16 @@ class STTServer:
     async def start(self):
         global whisper_model
         model_name = os.environ.get("WHISPER_MODEL", "base.en")
-        print(f"[STT Server] Loading Faster-Whisper ({model_name}) once at server startup...")
-        whisper_model = WhisperModel(model_name, device="cpu", compute_type="int8", cpu_threads=4)
-        print(f"[STT Server] Model ({model_name}) loaded successfully.")
+        if WhisperModel:
+            try:
+                print(f"[STT Server] Loading Faster-Whisper ({model_name}) once at server startup...")
+                whisper_model = WhisperModel(model_name, device="cpu", compute_type="int8", cpu_threads=4)
+                print(f"[STT Server] Model ({model_name}) loaded successfully.")
+            except Exception as e:
+                print(f"[STT Server] Faster-Whisper load warning ({e}). Active mode: Groq Cloud whisper-large-v3-turbo / Deepgram fallback.")
+                whisper_model = None
+        else:
+            print(f"[STT Server] Faster-Whisper not installed. Active mode: Groq Cloud whisper-large-v3-turbo / Deepgram fallback.")
 
         self.executor = ThreadPoolExecutor(max_workers=self.workers)
         # Pre-warm with a dummy inference
