@@ -120,10 +120,11 @@ app.post('/api/telephony/outbound-call', async (req, res) => {
   try {
     const exotelUrl = `https://api.exotel.com/v1/Accounts/${accountSid}/Calls/connect.json`;
     const params = new URLSearchParams({
-      From:           virtualNum,   // ExoPhone leg — Exotel runs Flow 1337835 here (Riya AI voicebot)
-      To:             cleanTo,      // Lead's mobile — bridged in after ExoPhone connects
+      From:           cleanTo,      // Lead's mobile — Exotel calls them first
+      To:             virtualNum,   // ExoPhone — bridged after lead picks up
       CallerId:       virtualNum,   // CLI shown on lead's phone
-      Url:            `https://my.exotel.in/snazzyitsolutions1/exoml/start/1337835`,
+      // Our /voice webhook returns Exotel Voicebot ExoML → triggers Riya AI
+      Url:            `https://drool-envoy-sandy.ngrok-free.dev/voice`,
       StatusCallback: `https://drool-envoy-sandy.ngrok-free.dev/api/telephony/webhook`,
       CallType:       'trans',
       TimeLimit:      '3600',
