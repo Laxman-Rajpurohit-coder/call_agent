@@ -50,8 +50,9 @@ app.use((err, req, res, next) => {
 });
 app.use(express.urlencoded({ extended: true }));
 
-// Serve static UI and call recordings
-app.use(express.static(path.join(__dirname, 'public')));
+// Serve compiled React Main Dashboard (frontend/dist), legacy agent portal, and call recordings
+app.use(express.static(path.join(__dirname, 'frontend/dist')));
+app.use('/agent-legacy', express.static(path.join(__dirname, 'public')));
 app.use('/recordings', express.static(path.join(__dirname, 'recordings')));
 
 // API Routes
@@ -394,6 +395,14 @@ wss.on('connection', (clientWs, req) => {
     if (targetWs.readyState === WebSocket.OPEN) targetWs.close();
   });
 
+});
+
+// SPA Fallback: Serve full Superfone AI React Dashboard index.html for client routes
+app.get('*', (req, res, next) => {
+  if (req.url.startsWith('/api') || req.url.startsWith('/recordings') || req.url.startsWith('/media')) {
+    return next();
+  }
+  res.sendFile(path.join(__dirname, 'frontend/dist', 'index.html'));
 });
 
 
