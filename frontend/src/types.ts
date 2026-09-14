@@ -191,8 +191,21 @@ export interface Campaign {
   max_concurrency: number;
   calls_per_minute: number;
   max_retries: number;
+  contact_count?: number;
   created_at: string;
   updated_at: string;
+}
+
+export interface CampaignContactDetail {
+  id: string;
+  contact_id: string;
+  name: string;
+  phone_number: string;
+  email?: string;
+  status: string;
+  attempt_count: number;
+  last_attempt_at?: string;
+  final_outcome?: string;
 }
 
 export interface CampaignProgress {

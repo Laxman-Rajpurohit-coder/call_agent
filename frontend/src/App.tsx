@@ -364,6 +364,80 @@ export const App: React.FC = () => {
     }
   };
 
+  const handlePauseCampaign = async (id: string) => {
+    try {
+      const resp = await fetch(`/api/v1/campaigns/${id}/pause`, { method: 'POST' });
+      if (resp.ok) {
+        fetchData();
+      } else {
+        const errJson = await resp.json().catch(() => ({}));
+        alert(`Failed to pause campaign: ${resp.status} ${errJson.detail || resp.statusText || 'Server error'}`);
+      }
+    } catch (ex: any) {
+      alert(`Failed to pause campaign: ${ex.message}`);
+    }
+  };
+
+  const handleResumeCampaign = async (id: string) => {
+    try {
+      const resp = await fetch(`/api/v1/campaigns/${id}/resume`, { method: 'POST' });
+      if (resp.ok) {
+        fetchData();
+      } else {
+        const errJson = await resp.json().catch(() => ({}));
+        alert(`Failed to resume campaign: ${resp.status} ${errJson.detail || resp.statusText || 'Server error'}`);
+      }
+    } catch (ex: any) {
+      alert(`Failed to resume campaign: ${ex.message}`);
+    }
+  };
+
+  const handleStopCampaign = async (id: string) => {
+    try {
+      const resp = await fetch(`/api/v1/campaigns/${id}/stop`, { method: 'POST' });
+      if (resp.ok) {
+        fetchData();
+      } else {
+        const errJson = await resp.json().catch(() => ({}));
+        alert(`Failed to stop campaign: ${resp.status} ${errJson.detail || resp.statusText || 'Server error'}`);
+      }
+    } catch (ex: any) {
+      alert(`Failed to stop campaign: ${ex.message}`);
+    }
+  };
+
+  const handleDeleteCampaign = async (id: string) => {
+    try {
+      const resp = await fetch(`/api/v1/campaigns/${id}`, { method: 'DELETE' });
+      if (resp.ok) {
+        await fetchData();
+      } else {
+        const errJson = await resp.json().catch(() => ({}));
+        alert(`Failed to delete campaign: ${resp.status} ${errJson.detail || resp.statusText || 'Server error'}`);
+      }
+    } catch (ex: any) {
+      alert(`Failed to delete campaign: ${ex.message}`);
+    }
+  };
+
+  const handleBulkDeleteCampaigns = async (ids: string[]) => {
+    try {
+      const resp = await fetch(`/api/v1/campaigns/bulk-delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ campaign_ids: ids })
+      });
+      if (resp.ok) {
+        await fetchData();
+      } else {
+        const errJson = await resp.json().catch(() => ({}));
+        alert(`Failed to delete campaigns: ${resp.status} ${errJson.detail || resp.statusText || 'Server error'}`);
+      }
+    } catch (ex: any) {
+      alert(`Failed to delete campaigns: ${ex.message}`);
+    }
+  };
+
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const toggleMobileMenu = useCallback(() => {
@@ -451,8 +525,19 @@ export const App: React.FC = () => {
 
             {activeTab === 'crm' && <CRMPage calls={calls} contacts={contacts} onImportCSV={handleImportCSV} onRefreshData={fetchData} />}
             {activeTab === 'tasks' && <TasksPage />}
-            {activeTab === 'team' && <TeamPage />}
-            {activeTab === 'campaigns' && <CampaignsPage campaigns={campaigns} onCreateCampaign={handleCreateCampaign} onStartCampaign={handleStartCampaign} />}
+            {activeTab === 'campaigns' && (
+              <CampaignsPage
+                campaigns={campaigns}
+                contacts={contacts}
+                onCreateCampaign={handleCreateCampaign}
+                onStartCampaign={handleStartCampaign}
+                onPauseCampaign={handlePauseCampaign}
+                onResumeCampaign={handleResumeCampaign}
+                onStopCampaign={handleStopCampaign}
+                onDeleteCampaign={handleDeleteCampaign}
+                onBulkDeleteCampaigns={handleBulkDeleteCampaigns}
+              />
+            )}
             {activeTab === 'voice-studio' && <VoiceStudioPage />}
             {activeTab === 'evaluations' && <EvaluationsPage evaluations={evaluations} />}
             {activeTab === 'load-testing' && <LoadTestingPage loadTests={loadTests} />}

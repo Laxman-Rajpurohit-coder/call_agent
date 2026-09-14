@@ -106,6 +106,102 @@ RECORDINGS_DIR = os.path.join(ROOT_DIR, "recordings")
 os.makedirs(RECORDINGS_DIR, exist_ok=True)
 app.mount("/recordings", StaticFiles(directory=RECORDINGS_DIR), name="recordings")
 
+# Direct Exotel Outbound Call Telephony Endpoint
+from pydantic import BaseModel
+from typing import Optional
+import base64
+import httpx
+import uuid
+
+class ExotelOutboundRequest(BaseModel):
+    to: str
+    contact_name: Optional[str] = None
+    script_content: Optional[str] = ""
+    system_prompt: Optional[str] = ""
+
+@app.post("/api/telephony/outbound-call")
+@app.post("/api/v1/telephony/outbound-call")
+async def handle_exotel_outbound_call(req: ExotelOutboundRequest):
+    """
+    Triggers automated outbound cellular/PSTN call via Exotel API
+    routing to the Voicebot Flow (Flow 1337835).
+    """
+    to_phone = req.to.strip() if req.to else ""
+    if not to_phone:
+        raise HTTPException(status_code=400, detail="Recipient phone number (to) is required.")
+
+    account_sid = os.environ.get("EXOTEL_ACCOUNT_SID", "snazzyitsolutions1")
+    api_key = os.environ.get("EXOTEL_API_KEY")
+    api_token = os.environ.get("EXOTEL_API_TOKEN")
+    caller_id = os.environ.get("EXOTEL_VIRTUAL_NUMBER", "08047283364")
+
+    if not api_key or not api_token:
+        raise HTTPException(status_code=500, detail="Exotel API key or token missing in .env")
+
+    clean_to = to_phone.replace(" ", "").replace("+91", "0")
+    auth_str = base64.b64encode(f"{api_key}:{api_token}".encode()).decode()
+    exotel_url = f"https://api.exotel.com/v1/Accounts/{account_sid}/Calls/connect.json"
+    flow_url = f"https://my.exotel.com/{account_sid}/exoml/start_voice/1337835"
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                exotel_url,
+                headers={
+                    "Authorization": f"Basic {auth_str}",
+                    "Content-Type": "application/x-www-form-urlencoded"
+                },
+                data={
+                    "From": clean_to,
+                    "To": caller_id,
+                    "CallerId": caller_id,
+                    "Url": flow_url,
+                    "CallType": "trans",
+                    "TimeLimit": "3600",
+                    "TimeOut": "30"
+                }
+            )
+
+        data = resp.json()
+        print(f"[Exotel Outbound Call] Dialed {clean_to} via Flow {flow_url}: HTTP {resp.status_code}")
+
+        # Record call session in CRM DB
+        from services.dashboard.app.database import SessionLocal
+        from services.dashboard.app.models import CallSession, Organization, Contact
+        db_s = SessionLocal()
+        try:
+            org = db_s.query(Organization).first()
+            org_id = org.id if org else str(uuid.uuid4())
+            contact = db_s.query(Contact).filter(Contact.phone_number == to_phone).first()
+            session_rec = CallSession(
+                id=str(uuid.uuid4()),
+                organization_id=org_id,
+                contact_id=contact.id if contact else None,
+                provider="exotel",
+                direction="outbound",
+                from_number=caller_id,
+                to_number=to_phone,
+                status="in_progress",
+                duration_s=0.0
+            )
+            db_s.add(session_rec)
+            db_s.commit()
+        except Exception as db_err:
+            print(f"[Exotel Outbound DB Log Warning]: {db_err}")
+        finally:
+            db_s.close()
+
+        if resp.status_code not in (200, 201):
+            raise HTTPException(status_code=resp.status_code, detail=f"Exotel API error: {resp.text}")
+
+        return {"success": True, "data": data}
+
+    except HTTPException:
+        raise
+    except Exception as err:
+        print(f"[Exotel Outbound Call Error]: {err}")
+        raise HTTPException(status_code=500, detail=str(err))
+
 # Serve Frontend Static Build
 FRONTEND_DIST = os.path.join(WORKSPACE_DIR, "frontend", "dist")
 if not os.path.exists(FRONTEND_DIST):

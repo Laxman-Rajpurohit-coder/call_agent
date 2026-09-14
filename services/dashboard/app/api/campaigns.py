@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from services.dashboard.app.database import get_db, SessionLocal
 from services.dashboard.app.models import Campaign, CampaignContact, Contact, CallSession, CallInteraction, Organization
-from services.dashboard.app.schemas import CampaignCreate, CampaignResponse, CampaignProgress
+from services.dashboard.app.schemas import CampaignCreate, CampaignResponse, CampaignProgress, CampaignContactDetail
 from services.dashboard.app.services.campaign_service import campaign_runner
 from services.dashboard.app.services.call_dispatcher import call_dispatcher
 from services.dashboard.app.services.script_engine import ScriptEngine
@@ -21,7 +21,10 @@ class TestCallRequest(BaseModel):
 
 @router.get("", response_model=List[CampaignResponse])
 async def list_campaigns(db: Session = Depends(get_db)):
-    return db.query(Campaign).order_by(Campaign.created_at.desc()).all()
+    campaigns = db.query(Campaign).order_by(Campaign.created_at.desc()).all()
+    for c in campaigns:
+        c.contact_count = len(c.contacts)
+    return campaigns
 
 @router.post("", response_model=CampaignResponse)
 async def create_campaign(c_in: CampaignCreate, db: Session = Depends(get_db)):
@@ -57,12 +60,36 @@ async def create_campaign(c_in: CampaignCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(campaign)
 
-    contact_ids = c_in.contact_ids
+    contact_ids = list(c_in.contact_ids or [])
+
+    # Process custom phone numbers if entered
+    if c_in.custom_phone_numbers:
+        org = db.query(Organization).first()
+        org_id = org.id if org else str(uuid.uuid4())
+        for raw_p in c_in.custom_phone_numbers:
+            p = raw_p.strip()
+            if not p:
+                continue
+            existing = db.query(Contact).filter(Contact.phone_number == p).first()
+            if not existing:
+                existing = Contact(
+                    id=str(uuid.uuid4()),
+                    organization_id=org_id,
+                    phone_number=p,
+                    name=f"Lead {p[-4:]}" if len(p) >= 4 else f"Lead {p}",
+                    status="ACTIVE",
+                    preferred_language="hi"
+                )
+                db.add(existing)
+                db.commit()
+                db.refresh(existing)
+            if existing.id not in contact_ids:
+                contact_ids.append(existing.id)
+
+    # Fallback to MicroSIP softphone ONLY if user provided zero contacts & zero numbers
     if not contact_ids:
-        # Default to MicroSIP softphone lead for clean desktop softphone testing
-        microsip_contact = db.query(Contact).filter(Contact.phone_number == "test1000").first()
-        if microsip_contact:
-            contact_ids = [microsip_contact.id]
+        if microsip:
+            contact_ids = [microsip.id]
         else:
             all_contacts = db.query(Contact).all()
             contact_ids = [c.id for c in all_contacts]
@@ -72,6 +99,7 @@ async def create_campaign(c_in: CampaignCreate, db: Session = Depends(get_db)):
         db.add(cc)
 
     db.commit()
+    campaign.contact_count = len(campaign.contacts)
     return campaign
 
 @router.post("/test-call")
@@ -141,42 +169,53 @@ async def trigger_test_call(req: TestCallRequest, db: Session = Depends(get_db))
         "transcript": transcript
     }
 
-@router.post("/{campaign_id}/start")
-async def start_campaign(campaign_id: str, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+@router.get("/{campaign_id}/contacts", response_model=List[CampaignContactDetail])
+async def get_campaign_contacts(campaign_id: str, db: Session = Depends(get_db)):
     campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
 
-    # 1. Ensure MicroSIP contact exists in DB
-    microsip = db.query(Contact).filter(Contact.phone_number == "test1000").first()
-    if not microsip:
-        org = db.query(Organization).first()
-        microsip = Contact(
-            id=str(uuid.uuid4()),
-            organization_id=org.id if org else str(uuid.uuid4()),
-            phone_number="test1000",
-            name="My MicroSIP Softphone",
-            email="microsip@superfone.ai",
-            status="ACTIVE",
-            preferred_language="hi"
-        )
-        db.add(microsip)
-        db.commit()
-        db.refresh(microsip)
-
-    # 2. Reset all existing CampaignContacts to PENDING and 0 attempts
     c_contacts = db.query(CampaignContact).filter(CampaignContact.campaign_id == campaign_id).all()
+    result = []
     for cc in c_contacts:
-        cc.status = "PENDING"
-        cc.attempt_count = 0
+        contact = db.query(Contact).filter(Contact.id == cc.contact_id).first()
+        result.append({
+            "id": cc.id,
+            "contact_id": cc.contact_id,
+            "name": contact.name if (contact and contact.name) else (contact.phone_number if contact else "Unknown"),
+            "phone_number": contact.phone_number if contact else "Unknown",
+            "email": contact.email if contact else None,
+            "status": cc.status,
+            "attempt_count": cc.attempt_count,
+            "last_attempt_at": cc.last_attempt_at.isoformat() if cc.last_attempt_at else None,
+            "final_outcome": cc.final_outcome
+        })
+    return result
 
-    # 3. Ensure MicroSIP softphone is at Position #1 (First Contact to Dial)
-    cc_micro = db.query(CampaignContact).filter(
-        CampaignContact.campaign_id == campaign_id,
-        CampaignContact.contact_id == microsip.id
-    ).first()
+@router.post("/{campaign_id}/start")
+async def start_campaign(campaign_id: str, db: Session = Depends(get_db)):
+    campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
 
-    if not cc_micro:
+    # 1. Reset all existing CampaignContacts to PENDING and 0 attempts
+    c_contacts = db.query(CampaignContact).filter(CampaignContact.campaign_id == campaign_id).all()
+    if not c_contacts:
+        microsip = db.query(Contact).filter(Contact.phone_number == "test1000").first()
+        if not microsip:
+            org = db.query(Organization).first()
+            microsip = Contact(
+                id=str(uuid.uuid4()),
+                organization_id=org.id if org else str(uuid.uuid4()),
+                phone_number="test1000",
+                name="My MicroSIP Softphone",
+                email="microsip@superfone.ai",
+                status="ACTIVE",
+                preferred_language="hi"
+            )
+            db.add(microsip)
+            db.commit()
+            db.refresh(microsip)
         cc_micro = CampaignContact(
             campaign_id=campaign_id,
             contact_id=microsip.id,
@@ -184,11 +223,16 @@ async def start_campaign(campaign_id: str, background_tasks: BackgroundTasks, db
             attempt_count=0
         )
         db.add(cc_micro)
+    else:
+        for cc in c_contacts:
+            cc.status = "PENDING"
+            cc.attempt_count = 0
 
     campaign.status = "RUNNING"
     db.commit()
 
-    background_tasks.add_task(campaign_runner.execute_campaign, campaign_id, SessionLocal)
+    # Rule 1 compliance: Instant start via asyncio.create_task instead of blocking background_tasks
+    asyncio.create_task(campaign_runner.execute_campaign(campaign_id, SessionLocal))
     return {"status": "started", "campaign_id": campaign_id}
 
 @router.post("/{campaign_id}/pause")
@@ -202,7 +246,7 @@ async def pause_campaign(campaign_id: str, db: Session = Depends(get_db)):
     return {"status": "paused", "campaign_id": campaign_id}
 
 @router.post("/{campaign_id}/resume")
-async def resume_campaign(campaign_id: str, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+async def resume_campaign(campaign_id: str, db: Session = Depends(get_db)):
     campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
@@ -210,7 +254,8 @@ async def resume_campaign(campaign_id: str, background_tasks: BackgroundTasks, d
     campaign.status = "RUNNING"
     db.commit()
 
-    background_tasks.add_task(campaign_runner.execute_campaign, campaign_id, SessionLocal)
+    # Rule 1 compliance: Instant resume via asyncio.create_task
+    asyncio.create_task(campaign_runner.execute_campaign(campaign_id, SessionLocal))
     return {"status": "resumed", "campaign_id": campaign_id}
 
 @router.post("/{campaign_id}/stop")
@@ -277,3 +322,42 @@ async def update_campaign(campaign_id: str, c_up: CampaignUpdate, db: Session = 
     db.expire_all()
     db.refresh(campaign)
     return campaign
+
+class BulkDeleteCampaignsRequest(BaseModel):
+    campaign_ids: List[str]
+
+@router.delete("/{campaign_id}")
+async def delete_campaign(campaign_id: str, db: Session = Depends(get_db)):
+    campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    # If campaign is active/running, mark stopped to immediately halt runner dispatches
+    if campaign.status == "RUNNING":
+        campaign.status = "STOPPED"
+        db.commit()
+
+    db.delete(campaign)
+    db.commit()
+    return {"status": "deleted", "campaign_id": campaign_id}
+
+@router.post("/bulk-delete")
+async def bulk_delete_campaigns(req: BulkDeleteCampaignsRequest, db: Session = Depends(get_db)):
+    if not req.campaign_ids:
+        return {"status": "deleted", "count": 0, "deleted_ids": []}
+
+    campaigns = db.query(Campaign).filter(Campaign.id.in_(req.campaign_ids)).all()
+    deleted_ids = []
+    for camp in campaigns:
+        if camp.status == "RUNNING":
+            camp.status = "STOPPED"
+        deleted_ids.append(camp.id)
+        db.delete(camp)
+
+    db.commit()
+    return {"status": "deleted", "count": len(deleted_ids), "deleted_ids": deleted_ids}
+
+@router.delete("")
+async def delete_campaigns_body(req: BulkDeleteCampaignsRequest, db: Session = Depends(get_db)):
+    return await bulk_delete_campaigns(req, db)
+

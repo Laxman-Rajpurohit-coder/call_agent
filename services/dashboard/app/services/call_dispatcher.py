@@ -7,7 +7,8 @@ from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
-ROOT_DIR = r"c:\daily_works\superfone_call"
+from pathlib import Path
+ROOT_DIR = str(Path(__file__).resolve().parents[4])
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
@@ -135,7 +136,53 @@ class CallDispatcher:
                 "skipped": False
             }
 
-        if ami_secret:
+        # Check Exotel Outbound API for external PSTN phone numbers (India 10+ digits)
+        exotel_sid = os.environ.get("EXOTEL_ACCOUNT_SID", "snazzyitsolutions1")
+        exotel_key = os.environ.get("EXOTEL_API_KEY")
+        exotel_token = os.environ.get("EXOTEL_API_TOKEN")
+        exotel_caller_id = os.environ.get("EXOTEL_VIRTUAL_NUMBER", "08047283364")
+        digits_only = "".join(c for c in phone_number if c.isdigit())
+
+        if exotel_key and exotel_token and len(digits_only) >= 10:
+            import httpx
+            import base64
+            clean_to = phone_number.replace(" ", "").replace("+91", "0")
+            auth_str = base64.b64encode(f"{exotel_key}:{exotel_token}".encode()).decode()
+            exotel_url = f"https://api.exotel.com/v1/Accounts/{exotel_sid}/Calls/connect.json"
+            flow_url = f"https://my.exotel.com/{exotel_sid}/exoml/start_voice/1337835"
+            try:
+                attempt_rec.lifecycle_state = "RINGING"
+                db.commit()
+                async with httpx.AsyncClient(timeout=12.0) as http_client:
+                    resp = await http_client.post(
+                        exotel_url,
+                        headers={"Authorization": f"Basic {auth_str}"},
+                        data={
+                            "From": clean_to,
+                            "To": exotel_caller_id,
+                            "CallerId": exotel_caller_id,
+                            "Url": flow_url,
+                            "CallType": "trans",
+                            "TimeLimit": "3600",
+                            "TimeOut": "30"
+                        }
+                    )
+                if resp.status_code in (200, 201):
+                    attempt_rec.lifecycle_state = "AUDIO_CONNECTED"
+                    call_status = "completed"
+                    duration_s = round(time.perf_counter() - t0, 2) or 15.0
+                    print(f"[CallDispatcher Exotel] Successfully triggered outbound call to {clean_to}")
+                else:
+                    attempt_rec.lifecycle_state = "FAILED"
+                    call_status = "failed"
+                    failure_reason = f"Exotel HTTP {resp.status_code}: {resp.text[:100]}"
+                    duration_s = round(time.perf_counter() - t0, 2)
+            except Exception as ex:
+                attempt_rec.lifecycle_state = "FAILED"
+                call_status = "failed"
+                failure_reason = f"Exotel error: {str(ex)}"
+                duration_s = round(time.perf_counter() - t0, 2)
+        elif ami_secret:
             try:
                 from shared.ami import AMIClient
                 client = AMIClient(host=ami_host, port=ami_port, username="superfone", secret=ami_secret)

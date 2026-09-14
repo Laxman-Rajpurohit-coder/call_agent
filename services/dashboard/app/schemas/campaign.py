@@ -14,14 +14,27 @@ class CampaignBase(BaseModel):
 
 class CampaignCreate(CampaignBase):
     contact_ids: Optional[List[str]] = []
+    custom_phone_numbers: Optional[List[str]] = []
 
 class CampaignResponse(CampaignBase):
     id: str
     status: str
+    contact_count: Optional[int] = 0
     created_at: datetime
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+class CampaignContactDetail(BaseModel):
+    id: str
+    contact_id: str
+    name: str
+    phone_number: str
+    email: Optional[str] = None
+    status: str
+    attempt_count: int
+    last_attempt_at: Optional[str] = None
+    final_outcome: Optional[str] = None
 
 class CampaignProgress(BaseModel):
     campaign_id: str
