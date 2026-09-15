@@ -52,6 +52,17 @@ def run_migrations():
                 conn.execute(text("ALTER TABLE call_sessions ADD COLUMN dial_mode TEXT DEFAULT 'app';"))
                 conn.commit()
 
+        if "campaigns" in inspector.get_table_names():
+            camp_cols = [col["name"] for col in inspector.get_columns("campaigns")]
+            if "assigned_agent_id" not in camp_cols:
+                print("[DB Migration] Adding assigned_agent_id column to campaigns...")
+                conn.execute(text("ALTER TABLE campaigns ADD COLUMN assigned_agent_id TEXT;"))
+                conn.commit()
+            if "assigned_agent_name" not in camp_cols:
+                print("[DB Migration] Adding assigned_agent_name column to campaigns...")
+                conn.execute(text("ALTER TABLE campaigns ADD COLUMN assigned_agent_name TEXT;"))
+                conn.commit()
+
 def get_db():
     db = SessionLocal()
     try:

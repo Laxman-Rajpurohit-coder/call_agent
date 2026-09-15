@@ -65,6 +65,37 @@ app.use('/api/telephony', telephonyRoutes);
 app.all('/voice', (req, res, next) => { req.url = '/webhook'; telephonyRoutes(req, res, next); });
 app.all('/twiml', (req, res, next) => { req.url = '/webhook'; telephonyRoutes(req, res, next); });
 
+// Proxy all /api/v1 calls to FastAPI Dashboard Platform Backend (Port 9090)
+app.use('/api/v1', async (req, res) => {
+  const targetUrl = `http://127.0.0.1:9090/api/v1${req.url}`;
+  try {
+    const headers = { 'content-type': 'application/json' };
+    if (req.headers['authorization']) headers['authorization'] = req.headers['authorization'];
+    if (req.headers['accept']) headers['accept'] = req.headers['accept'];
+
+    const fetchOptions = {
+      method: req.method,
+      headers: headers,
+    };
+    if (['POST', 'PUT', 'PATCH'].includes(req.method) && req.body && Object.keys(req.body).length > 0) {
+      fetchOptions.body = JSON.stringify(req.body);
+    }
+    const response = await fetch(targetUrl, fetchOptions);
+    const contentType = response.headers.get('content-type') || '';
+    res.status(response.status);
+    if (contentType.includes('application/json')) {
+      const data = await response.json();
+      res.json(data);
+    } else {
+      const text = await response.text();
+      res.send(text);
+    }
+  } catch (err) {
+    console.error(`[API Proxy Error] /api/v1${req.url}:`, err.message);
+    res.status(500).json({ detail: err.message || 'FastAPI backend unavailable' });
+  }
+});
+
 // Tasks API (Synced with Voice Operations Database)
 app.get('/api/tasks', async (req, res) => {
   try {
