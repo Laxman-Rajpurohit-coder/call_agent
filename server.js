@@ -61,6 +61,10 @@ app.use('/api/leads', leadsRoutes);
 app.use('/api/activities', activitiesRoutes);
 app.use('/api/telephony', telephonyRoutes);
 
+// Telephony Webhook Alias Routes for CPaaS (Exotel / Twilio)
+app.all('/voice', (req, res, next) => { req.url = '/webhook'; telephonyRoutes(req, res, next); });
+app.all('/twiml', (req, res, next) => { req.url = '/webhook'; telephonyRoutes(req, res, next); });
+
 // Tasks API (Synced with Voice Operations Database)
 app.get('/api/tasks', async (req, res) => {
   try {

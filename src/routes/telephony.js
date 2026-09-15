@@ -59,13 +59,15 @@ router.post('/outbound-call', async (req, res) => {
     const authHeader = 'Basic ' + Buffer.from(`${apiKey}:${apiToken}`).toString('base64');
     const exotelUrl = `https://api.exotel.com/v1/Accounts/${accountSid}/Calls/connect.json`;
 
-    // Exact Exotel Flow URL for Voicebot flow (Flow 1337835 attached to ExoPhone 08047283364)
-    const flowUrl = `https://my.exotel.com/${accountSid}/exoml/start_voice/1337835`;
+    // Route call through public ngrok webhook to start Voicebot media stream
+    const publicDomain = process.env.PUBLIC_DOMAIN || 'drool-envoy-sandy.ngrok-free.dev';
+    const webhookUrl = `https://${publicDomain}/api/telephony/webhook`;
     const params = new URLSearchParams({
       From: cleanTo,
       To: callerId,
       CallerId: callerId,
-      Url: flowUrl,
+      Url: webhookUrl,
+      StatusCallback: webhookUrl,
       CallType: 'trans',
       TimeLimit: '3600',
       TimeOut: '30'
