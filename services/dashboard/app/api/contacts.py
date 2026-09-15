@@ -13,6 +13,53 @@ router = APIRouter(prefix="/contacts", tags=["Contacts"])
 async def list_contacts(limit: int = 100, db: Session = Depends(get_db)):
     return db.query(Contact).order_by(Contact.created_at.desc()).limit(limit).all()
 
+@router.get("/agent/{agent_id}")
+async def list_contacts_for_agent(agent_id: str, db: Session = Depends(get_db)):
+    """
+    Returns contacts assigned to this agent (lead_owner_id == agent_id).
+    Each contact includes full custom_fields: intent_score, bot_summary,
+    last_disposition, callback_scheduled_for, agent_notes.
+    """
+    from services.dashboard.app.models import CallSession as CallSessionModel
+    contacts = db.query(Contact).filter(
+        Contact.lead_owner_id == agent_id
+    ).order_by(Contact.updated_at.desc()).all()
+
+    result = []
+    for c in contacts:
+        cf = c.custom_fields or {}
+        # Count calls for this contact
+        call_count = db.query(CallSessionModel).filter(
+            (CallSessionModel.contact_id == c.id) |
+            (CallSessionModel.from_number == c.phone_number) |
+            (CallSessionModel.to_number == c.phone_number)
+        ).count()
+
+        result.append({
+            "id": c.id,
+            "name": c.name or "Unnamed Lead",
+            "phone_number": c.phone_number,
+            "email": c.email,
+            "status": c.status,
+            "preferred_language": c.preferred_language,
+            "lead_source": c.lead_source,
+            "lead_owner_id": c.lead_owner_id,
+            "last_called_at": c.last_called_at.isoformat() if c.last_called_at else None,
+            "created_at": c.created_at.isoformat() if c.created_at else None,
+            "updated_at": c.updated_at.isoformat() if c.updated_at else None,
+            "total_calls": call_count,
+            # Interest / intent fields from AI bot
+            "intent_score": cf.get("intent_score"),
+            "bot_summary": cf.get("bot_summary"),
+            "last_intent": cf.get("last_intent") or cf.get("bot_intent"),
+            "last_disposition": cf.get("last_disposition_by"),
+            "callback_scheduled_for": cf.get("callback_scheduled_for"),
+            "agent_notes": cf.get("agent_notes", []),
+            "custom_fields": cf,
+        })
+
+    return result
+
 @router.post("", response_model=ContactResponse)
 async def create_contact(contact_in: ContactCreate, db: Session = Depends(get_db)):
     org = db.query(Organization).first()

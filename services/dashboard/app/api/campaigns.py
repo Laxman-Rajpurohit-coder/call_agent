@@ -26,6 +26,16 @@ async def list_campaigns(db: Session = Depends(get_db)):
         c.contact_count = len(c.contacts)
     return campaigns
 
+@router.get("/agent/{agent_id}", response_model=List[CampaignResponse])
+async def list_campaigns_for_agent(agent_id: str, db: Session = Depends(get_db)):
+    """Return all campaigns assigned to a specific agent (by assigned_agent_id)."""
+    campaigns = db.query(Campaign).filter(
+        Campaign.assigned_agent_id == agent_id
+    ).order_by(Campaign.created_at.desc()).all()
+    for c in campaigns:
+        c.contact_count = len(c.contacts)
+    return campaigns
+
 @router.post("", response_model=CampaignResponse)
 async def create_campaign(c_in: CampaignCreate, db: Session = Depends(get_db)):
     # 1. Ensure MicroSIP softphone contact ALWAYS exists in DB
@@ -54,6 +64,8 @@ async def create_campaign(c_in: CampaignCreate, db: Session = Depends(get_db)):
         max_concurrency=c_in.max_concurrency,
         calls_per_minute=c_in.calls_per_minute,
         max_retries=c_in.max_retries,
+        assigned_agent_id=c_in.assigned_agent_id or None,
+        assigned_agent_name=c_in.assigned_agent_name or None,
         status="DRAFT"
     )
     db.add(campaign)

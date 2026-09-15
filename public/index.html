@@ -61,10 +61,13 @@
         <button id="navTasksBtn" class="nav-item active" onclick="switchTab('tasksTab')">
           <span class="icon">📋</span> My Assigned Tasks
         </button>
+        <button id="navCampaignsBtn" class="nav-item" onclick="switchTab('campaignsTab')">
+          <span class="icon">📢</span> My Campaigns
+        </button>
         <button id="navLeadsBtn" class="nav-item" onclick="switchTab('leadsTab')">
           <span class="icon">👥</span> Leads & Appointments
         </button>
-        <button class="nav-item" onclick="switchTab('callsTab')">
+        <button id="navCallsBtn" class="nav-item" onclick="switchTab('callsTab')">
           <span class="icon">📞</span> AI Call Logs
         </button>
         <button id="navSimBtn" class="nav-item" onclick="switchTab('simulatorTab')">
@@ -160,11 +163,27 @@
         </div>
       </section>
 
+      <!-- TAB 0.5: MY ASSIGNED OUTREACH CAMPAIGNS -->
+      <section id="campaignsTab" class="tab-content hidden">
+        <div class="table-container">
+          <div class="table-header">
+            <div>
+              <h3>My Assigned Outreach Campaigns</h3>
+              <p style="font-size: 12px; color: #94a3b8; margin-top: 2px;">Start, pause, and monitor outreach campaigns assigned to your agent account.</p>
+            </div>
+            <button onclick="fetchCampaigns()" class="secondary-btn" style="padding: 6px 14px; font-size: 12px;">🔄 Refresh</button>
+          </div>
+          <div id="campaignsGrid" class="campaigns-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; margin-top: 16px;">
+            <div class="empty-state" style="grid-column: 1/-1;">Loading assigned campaigns...</div>
+          </div>
+        </div>
+      </section>
+
       <!-- TAB 1: LEADS MANAGEMENT -->
       <section id="leadsTab" class="tab-content hidden">
         <div class="table-container">
           <div class="table-header">
-            <h3>Captured Customer Leads</h3>
+            <h3>Captured Customer Leads & AI Pre-Qualifications</h3>
             <input type="text" id="leadSearchInput" onkeyup="filterLeads()" placeholder="🔍 Search by name, phone, or service..." class="search-input">
           </div>
           <table class="data-table">
@@ -173,6 +192,7 @@
                 <th>Customer Name</th>
                 <th>Phone Number</th>
                 <th>Service Requested</th>
+                <th>AI Intent Score</th>
                 <th>Preferred Slot</th>
                 <th>Captured At</th>
                 <th>Status</th>
@@ -181,7 +201,7 @@
             </thead>
             <tbody id="leadsTableBody">
               <tr>
-                <td colspan="7" class="empty-state">Loading leads data...</td>
+                <td colspan="8" class="empty-state">Loading leads data...</td>
               </tr>
             </tbody>
           </table>

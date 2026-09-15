@@ -5,9 +5,10 @@ import {
   UserCheck, AlertCircle, PhoneIncoming, MessageSquare, Tag, Plus, Calendar,
   ListTodo, User, Radio, Hash, ChevronRight, Activity, Zap, Search,
   ArrowRight, X, ArrowUpRight, VolumeX, History, FileText, Send, Check,
-  CheckSquare, Square, LogOut
+  CheckSquare, Square, LogOut, Megaphone, TrendingUp, BarChart2, ChevronDown,
+  ChevronUp, Brain, Headphones, Users, Info, StopCircle, SkipForward
 } from 'lucide-react';
-import { AgentSession, AgentStatusType, Contact, CallSession, LeadTask } from '../types';
+import { AgentSession, AgentStatusType, Contact, CallSession, LeadTask, Campaign, AgentContact, AgentCallHistory } from '../types';
 
 interface AgentDashboardPageProps {
   session: AgentSession;
@@ -58,8 +59,8 @@ export const AgentDashboardPage: React.FC<AgentDashboardPageProps> = ({
   const [isSavingDisposition, setIsSavingDisposition] = useState<boolean>(false);
   const [dispositionToast, setDispositionToast] = useState<string | null>(null);
 
-  // Main Right Column View Mode: 'tasks' vs 'leads' vs 'history'
-  const [activeWorkspaceMode, setActiveWorkspaceMode] = useState<'tasks' | 'leads' | 'history'>('tasks');
+  // Main Right Column View Mode
+  const [activeWorkspaceMode, setActiveWorkspaceMode] = useState<'tasks' | 'leads' | 'history' | 'campaigns' | 'contacts' | 'callhistory'>('tasks');
 
   // Tasks State (Fetched Live from Database)
   const [tasks, setTasks] = useState<LeadTask[]>([]);
@@ -70,6 +71,28 @@ export const AgentDashboardPage: React.FC<AgentDashboardPageProps> = ({
   const [activeLeadTab, setActiveLeadTab] = useState<'interested' | 'callbacks' | 'all'>('interested');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedLead, setSelectedLead] = useState<Contact | null>(null);
+
+  // ── My Contacts tab state ──────────────────────────────────────────
+  const [agentContacts, setAgentContacts] = useState<AgentContact[]>([]);
+  const [isContactsLoading, setIsContactsLoading] = useState<boolean>(false);
+  const [selectedAgentContact, setSelectedAgentContact] = useState<AgentContact | null>(null);
+  const [contactSearchQuery, setContactSearchQuery] = useState<string>('');
+  const [contactFilterStatus, setContactFilterStatus] = useState<'all' | 'interested' | 'callback' | 'not_interested'>('all');
+
+  // ── My Campaigns tab state ─────────────────────────────────────────
+  const [agentCampaigns, setAgentCampaigns] = useState<Campaign[]>([]);
+  const [isCampaignsLoading, setIsCampaignsLoading] = useState<boolean>(false);
+  const [selectedCampaignContacts, setSelectedCampaignContacts] = useState<any[]>([]);
+  const [viewingCampaignId, setViewingCampaignId] = useState<string | null>(null);
+  const [isLoadingCampaignContacts, setIsLoadingCampaignContacts] = useState<boolean>(false);
+
+  // ── Call History tab state ─────────────────────────────────────────
+  const [callHistory, setCallHistory] = useState<AgentCallHistory[]>([]);
+  const [isCallHistoryLoading, setIsCallHistoryLoading] = useState<boolean>(false);
+  const [expandedCallId, setExpandedCallId] = useState<string | null>(null);
+  const [playingRecordingId, setPlayingRecordingId] = useState<string | null>(null);
+  const [expandedTranscriptId, setExpandedTranscriptId] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // Incoming Screen-Pop Live Handoff
   const [incomingHandoff, setIncomingHandoff] = useState<IncomingHandoff | null>({
@@ -117,6 +140,97 @@ export const AgentDashboardPage: React.FC<AgentDashboardPageProps> = ({
   useEffect(() => {
     fetchTasks();
   }, [session.agent.id]);
+
+  // ── Fetch My Contacts ─────────────────────────────────────────────
+  const fetchAgentContacts = async () => {
+    setIsContactsLoading(true);
+    try {
+      const res = await fetch(`/api/v1/contacts/agent/${session.agent.id}`);
+      if (res.ok) {
+        const data: AgentContact[] = await res.json();
+        setAgentContacts(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch agent contacts', err);
+    } finally {
+      setIsContactsLoading(false);
+    }
+  };
+
+  // ── Fetch My Campaigns ────────────────────────────────────────────
+  const fetchAgentCampaigns = async () => {
+    setIsCampaignsLoading(true);
+    try {
+      const res = await fetch(`/api/v1/campaigns/agent/${session.agent.id}`);
+      if (res.ok) {
+        const data: Campaign[] = await res.json();
+        setAgentCampaigns(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch agent campaigns', err);
+    } finally {
+      setIsCampaignsLoading(false);
+    }
+  };
+
+  // ── Fetch Campaign Contacts (for modal) ───────────────────────────
+  const fetchCampaignContacts = async (campaignId: string) => {
+    setIsLoadingCampaignContacts(true);
+    setViewingCampaignId(campaignId);
+    try {
+      const res = await fetch(`/api/v1/campaigns/${campaignId}/contacts`);
+      if (res.ok) {
+        const data = await res.json();
+        setSelectedCampaignContacts(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch campaign contacts', err);
+    } finally {
+      setIsLoadingCampaignContacts(false);
+    }
+  };
+
+  // ── Fetch Call History ────────────────────────────────────────────
+  const fetchCallHistory = async () => {
+    setIsCallHistoryLoading(true);
+    try {
+      const res = await fetch(`/api/v1/calls/agent/${session.agent.id}`);
+      if (res.ok) {
+        const data: AgentCallHistory[] = await res.json();
+        setCallHistory(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch call history', err);
+    } finally {
+      setIsCallHistoryLoading(false);
+    }
+  };
+
+  // ── Campaign control helpers ──────────────────────────────────────
+  const handleStartCampaign = async (campaignId: string) => {
+    try {
+      await fetch(`/api/v1/campaigns/${campaignId}/start`, { method: 'POST' });
+      fetchAgentCampaigns();
+      setDispositionToast('▶ Campaign started!');
+      setTimeout(() => setDispositionToast(null), 3000);
+    } catch (err) { console.error(err); }
+  };
+
+  const handlePauseCampaignAgent = async (campaignId: string) => {
+    try {
+      await fetch(`/api/v1/campaigns/${campaignId}/pause`, { method: 'POST' });
+      fetchAgentCampaigns();
+      setDispositionToast('⏸ Campaign paused.');
+      setTimeout(() => setDispositionToast(null), 3000);
+    } catch (err) { console.error(err); }
+  };
+
+  // Lazy-load when tab is switched
+  useEffect(() => {
+    if (activeWorkspaceMode === 'contacts') fetchAgentContacts();
+    if (activeWorkspaceMode === 'campaigns') fetchAgentCampaigns();
+    if (activeWorkspaceMode === 'callhistory') fetchCallHistory();
+  }, [activeWorkspaceMode, session.agent.id]);
 
   // Shift Timer
   useEffect(() => {
@@ -803,52 +917,79 @@ export const AgentDashboardPage: React.FC<AgentDashboardPageProps> = ({
           
           <div className="glass-panel border border-slate-800 rounded-3xl p-5 sm:p-6 bg-slate-900/80 backdrop-blur-xl">
             
-            {/* Main Tabs Switcher: Assigned Tasks vs Assigned Leads vs Call History */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800 mb-4">
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => setActiveWorkspaceMode('tasks')}
-                  className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 ${
-                    activeWorkspaceMode === 'tasks'
-                      ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
-                      : 'bg-slate-950/60 text-slate-400 hover:text-slate-200 border border-slate-800'
-                  }`}
-                >
-                  <ListTodo className="w-4 h-4" />
-                  <span>My Assigned Tasks ({tasks.filter(t => t.status !== 'completed').length})</span>
-                </button>
-
-                <button
-                  onClick={() => setActiveWorkspaceMode('leads')}
-                  className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 ${
-                    activeWorkspaceMode === 'leads'
-                      ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
-                      : 'bg-slate-950/60 text-slate-400 hover:text-slate-200 border border-slate-800'
-                  }`}
-                >
-                  <Flame className="w-4 h-4 text-amber-400" />
-                  <span>Assigned Leads ({filteredLeads.length})</span>
-                </button>
-
-                <button
-                  onClick={() => setActiveWorkspaceMode('history')}
-                  className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 ${
-                    activeWorkspaceMode === 'history'
-                      ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
-                      : 'bg-slate-950/60 text-slate-400 hover:text-slate-200 border border-slate-800'
-                  }`}
-                >
-                  <History className="w-4 h-4 text-purple-400" />
-                  <span>Call Logs</span>
-                </button>
-              </div>
+            {/* Main Tabs Switcher — 6 tabs */}
+            <div className="flex flex-wrap items-center gap-2 pb-4 border-b border-slate-800 mb-4">
+              <button
+                onClick={() => setActiveWorkspaceMode('tasks')}
+                className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 ${
+                  activeWorkspaceMode === 'tasks'
+                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
+                    : 'bg-slate-950/60 text-slate-400 hover:text-slate-200 border border-slate-800'
+                }`}
+              >
+                <ListTodo className="w-3.5 h-3.5" />
+                <span>Tasks ({tasks.filter(t => t.status !== 'completed').length})</span>
+              </button>
 
               <button
-                onClick={fetchTasks}
-                className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-400 hover:text-white self-end sm:self-auto"
-                title="Refresh from database"
+                onClick={() => setActiveWorkspaceMode('contacts')}
+                className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 ${
+                  activeWorkspaceMode === 'contacts'
+                    ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/30'
+                    : 'bg-slate-950/60 text-slate-400 hover:text-slate-200 border border-slate-800'
+                }`}
               >
-                <RefreshCw className={`w-3.5 h-3.5 ${isTasksLoading ? 'animate-spin text-indigo-400' : ''}`} />
+                <Users className="w-3.5 h-3.5" />
+                <span>My Contacts</span>
+              </button>
+
+              <button
+                onClick={() => setActiveWorkspaceMode('campaigns')}
+                className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 ${
+                  activeWorkspaceMode === 'campaigns'
+                    ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30'
+                    : 'bg-slate-950/60 text-slate-400 hover:text-slate-200 border border-slate-800'
+                }`}
+              >
+                <Megaphone className="w-3.5 h-3.5" />
+                <span>My Campaigns ({agentCampaigns.length})</span>
+              </button>
+
+              <button
+                onClick={() => setActiveWorkspaceMode('callhistory')}
+                className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 ${
+                  activeWorkspaceMode === 'callhistory'
+                    ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/30'
+                    : 'bg-slate-950/60 text-slate-400 hover:text-slate-200 border border-slate-800'
+                }`}
+              >
+                <Headphones className="w-3.5 h-3.5" />
+                <span>Call History</span>
+              </button>
+
+              <button
+                onClick={() => setActiveWorkspaceMode('leads')}
+                className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 ${
+                  activeWorkspaceMode === 'leads'
+                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
+                    : 'bg-slate-950/60 text-slate-400 hover:text-slate-200 border border-slate-800'
+                }`}
+              >
+                <Flame className="w-3.5 h-3.5 text-amber-400" />
+                <span>Hot Leads</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  if (activeWorkspaceMode === 'tasks') fetchTasks();
+                  else if (activeWorkspaceMode === 'contacts') fetchAgentContacts();
+                  else if (activeWorkspaceMode === 'campaigns') fetchAgentCampaigns();
+                  else if (activeWorkspaceMode === 'callhistory') fetchCallHistory();
+                }}
+                className="ml-auto p-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-400 hover:text-white"
+                title="Refresh"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${(isTasksLoading || isContactsLoading || isCampaignsLoading || isCallHistoryLoading) ? 'animate-spin text-indigo-400' : ''}`} />
               </button>
             </div>
 
@@ -1157,6 +1298,363 @@ export const AgentDashboardPage: React.FC<AgentDashboardPageProps> = ({
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+
+            {/* ============================================================ */}
+            {/* VIEW: MY CONTACTS — Intent scores + AI summaries              */}
+            {/* ============================================================ */}
+            {activeWorkspaceMode === 'contacts' && (
+              <div className="space-y-4">
+                {/* Search & Filter Bar */}
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <div className="relative flex-1">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                    <input
+                      type="text"
+                      value={contactSearchQuery}
+                      onChange={(e) => setContactSearchQuery(e.target.value)}
+                      placeholder="Search contacts..."
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-950/70 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                  <div className="flex p-1 rounded-xl bg-slate-950 border border-slate-800 text-[11px] font-semibold">
+                    {(['all', 'interested', 'callback', 'not_interested'] as const).map(f => (
+                      <button key={f} onClick={() => setContactFilterStatus(f)}
+                        className={`px-2.5 py-1 rounded-lg transition-all capitalize ${contactFilterStatus === f ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}>
+                        {f === 'all' ? 'All' : f === 'not_interested' ? 'Not Int.' : f.charAt(0).toUpperCase() + f.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {isContactsLoading ? (
+                  <div className="flex items-center justify-center py-12 text-slate-400 text-xs">
+                    <RefreshCw className="w-4 h-4 animate-spin mr-2" /> Loading contacts...
+                  </div>
+                ) : agentContacts.length === 0 ? (
+                  <div className="text-center py-12 space-y-2">
+                    <Users className="w-10 h-10 text-slate-600 mx-auto" />
+                    <p className="text-slate-400 text-sm font-medium">No contacts assigned to you yet.</p>
+                    <p className="text-slate-500 text-xs">Ask your admin to assign CRM contacts to your profile.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
+                    {agentContacts
+                      .filter(c => contactFilterStatus === 'all' || c.status === contactFilterStatus)
+                      .filter(c => !contactSearchQuery || (c.name + c.phone_number + (c.email || '')).toLowerCase().includes(contactSearchQuery.toLowerCase()))
+                      .map(c => {
+                        const intentScore = c.intent_score ?? 0;
+                        const isExpanded = selectedAgentContact?.id === c.id;
+                        const statusColors: Record<string, string> = {
+                          interested: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+                          callback: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+                          not_interested: 'bg-red-500/20 text-red-400 border-red-500/30',
+                          lead: 'bg-slate-700 text-slate-300 border-slate-600',
+                        };
+                        const statusClass = statusColors[c.status] || statusColors.lead;
+                        return (
+                          <div key={c.id} className={`rounded-2xl border transition-all ${isExpanded ? 'bg-emerald-950/20 border-emerald-500/40 ring-1 ring-emerald-500/20' : 'bg-slate-950/60 border-slate-800 hover:border-slate-700'}`}>
+                            <div className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer" onClick={() => setSelectedAgentContact(isExpanded ? null : c)}>
+                              <div className="flex items-start space-x-3 flex-1 min-w-0">
+                                <div className="w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-300 font-extrabold text-sm shrink-0">
+                                  {(c.name || '?')[0].toUpperCase()}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-sm font-extrabold text-white truncate">{c.name || 'Unnamed Lead'}</p>
+                                  <p className="text-xs text-slate-400 font-mono">{c.phone_number}</p>
+                                  {c.lead_source && <p className="text-[10px] text-slate-500 mt-0.5">Source: {c.lead_source}</p>}
+                                </div>
+                              </div>
+                              {/* Intent Score Bar */}
+                              <div className="flex flex-col items-end gap-1.5 shrink-0 w-32">
+                                <div className="flex items-center justify-between w-full">
+                                  <span className="text-[10px] text-slate-400 font-bold">INTENT</span>
+                                  <span className={`text-[10px] font-black ${intentScore >= 80 ? 'text-emerald-400' : intentScore >= 50 ? 'text-amber-400' : 'text-slate-400'}`}>{intentScore}/100</span>
+                                </div>
+                                <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                                  <div className={`h-full rounded-full transition-all ${intentScore >= 80 ? 'bg-gradient-to-r from-emerald-500 to-teal-400' : intentScore >= 50 ? 'bg-amber-500' : 'bg-slate-600'}`} style={{ width: `${intentScore}%` }} />
+                                </div>
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${statusClass} capitalize`}>{c.status}</span>
+                              </div>
+                              <div className="flex items-center space-x-2 shrink-0">
+                                <button onClick={(e) => { e.stopPropagation(); handleInitiateCall(c.phone_number, c.name, c.id); }}
+                                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center space-x-1.5 shadow-md shadow-emerald-600/20 transition-all active:scale-95">
+                                  <PhoneCall className="w-3.5 h-3.5" /><span>Call</span>
+                                </button>
+                                {isExpanded ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+                              </div>
+                            </div>
+                            {isExpanded && (
+                              <div className="px-4 pb-4 space-y-3 border-t border-slate-800/60 pt-3">
+                                {c.bot_summary && (
+                                  <div className="p-3 rounded-xl bg-indigo-950/30 border border-indigo-500/20">
+                                    <div className="flex items-center space-x-1.5 mb-1.5">
+                                      <Brain className="w-3.5 h-3.5 text-purple-400" />
+                                      <span className="text-[10px] font-bold text-purple-300 uppercase tracking-wider">AI Bot Summary</span>
+                                    </div>
+                                    <p className="text-xs text-slate-300 leading-relaxed">{c.bot_summary}</p>
+                                  </div>
+                                )}
+                                {c.last_intent && (
+                                  <div className="flex items-center space-x-2">
+                                    <Tag className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                                    <span className="text-xs text-slate-300">Intent: <span className="text-indigo-300 font-semibold">{c.last_intent}</span></span>
+                                  </div>
+                                )}
+                                {c.callback_scheduled_for && (
+                                  <div className="flex items-center space-x-2">
+                                    <Calendar className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                                    <span className="text-xs text-slate-300">Callback: <span className="text-amber-300 font-semibold">{c.callback_scheduled_for}</span></span>
+                                  </div>
+                                )}
+                                {c.email && (
+                                  <div className="flex items-center space-x-2">
+                                    <MessageSquare className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                    <span className="text-xs text-slate-400">{c.email}</span>
+                                  </div>
+                                )}
+                                <div className="flex items-center space-x-2 pt-1">
+                                  <span className="text-[10px] text-slate-500">Total Calls: {c.total_calls}</span>
+                                  {c.last_called_at && <span className="text-[10px] text-slate-500">• Last: {new Date(c.last_called_at).toLocaleDateString()}</span>}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ============================================================ */}
+            {/* VIEW: MY CAMPAIGNS — Assigned campaigns with controls         */}
+            {/* ============================================================ */}
+            {activeWorkspaceMode === 'campaigns' && (
+              <div className="space-y-4">
+                {isCampaignsLoading ? (
+                  <div className="flex items-center justify-center py-12 text-slate-400 text-xs">
+                    <RefreshCw className="w-4 h-4 animate-spin mr-2" /> Loading campaigns...
+                  </div>
+                ) : agentCampaigns.length === 0 ? (
+                  <div className="text-center py-12 space-y-2">
+                    <Megaphone className="w-10 h-10 text-slate-600 mx-auto" />
+                    <p className="text-slate-400 text-sm font-medium">No campaigns assigned to you.</p>
+                    <p className="text-slate-500 text-xs">Ask your admin to assign campaigns to your account.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
+                    {agentCampaigns.map(camp => {
+                      const statusColors: Record<string, string> = {
+                        DRAFT: 'bg-slate-700 text-slate-300 border-slate-600',
+                        RUNNING: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+                        PAUSED: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+                        COMPLETED: 'bg-blue-500/20 text-blue-300 border-blue-500/40',
+                        FAILED: 'bg-red-500/20 text-red-400 border-red-500/30',
+                      };
+                      const isViewing = viewingCampaignId === camp.id;
+                      return (
+                        <div key={camp.id} className="rounded-2xl border border-slate-800 bg-slate-950/60 hover:border-purple-500/30 transition-all">
+                          <div className="p-4 space-y-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center space-x-2 flex-wrap gap-1">
+                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${statusColors[camp.status] || statusColors.DRAFT}`}>{camp.status}</span>
+                                  <span className="px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-300 text-[10px] font-bold border border-purple-500/30">{camp.type}</span>
+                                </div>
+                                <h4 className="text-sm font-extrabold text-white mt-1.5 truncate">{camp.name}</h4>
+                                {camp.description && <p className="text-xs text-slate-400 mt-0.5 line-clamp-1">{camp.description}</p>}
+                              </div>
+                              <div className="text-right shrink-0">
+                                <div className="text-lg font-black text-white font-mono">{camp.contact_count || 0}</div>
+                                <div className="text-[10px] text-slate-400">contacts</div>
+                              </div>
+                            </div>
+                            {/* Campaign controls */}
+                            <div className="flex items-center space-x-2 pt-1">
+                              {(camp.status === 'DRAFT' || camp.status === 'PAUSED') && (
+                                <button onClick={() => handleStartCampaign(camp.id)}
+                                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center space-x-1.5 shadow-md shadow-emerald-600/20 transition-all active:scale-95">
+                                  <Play className="w-3.5 h-3.5" /><span>Start</span>
+                                </button>
+                              )}
+                              {camp.status === 'RUNNING' && (
+                                <button onClick={() => handlePauseCampaignAgent(camp.id)}
+                                  className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold flex items-center space-x-1.5 transition-all active:scale-95">
+                                  <Pause className="w-3.5 h-3.5" /><span>Pause</span>
+                                </button>
+                              )}
+                              <button
+                                onClick={() => isViewing ? setViewingCampaignId(null) : fetchCampaignContacts(camp.id)}
+                                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-purple-600/20 border border-slate-700 hover:border-purple-500/40 text-slate-300 hover:text-purple-300 text-xs font-bold flex items-center space-x-1.5 transition-all">
+                                <Users className="w-3.5 h-3.5" /><span>{isViewing ? 'Hide' : 'View'} Contacts</span>
+                              </button>
+                            </div>
+                            {/* Campaign contacts sub-list */}
+                            {isViewing && (
+                              <div className="mt-2 pt-3 border-t border-slate-800 space-y-2">
+                                {isLoadingCampaignContacts ? (
+                                  <div className="text-center text-xs text-slate-400 py-3"><RefreshCw className="w-3.5 h-3.5 animate-spin inline mr-1" />Loading...</div>
+                                ) : selectedCampaignContacts.length === 0 ? (
+                                  <p className="text-xs text-slate-500 text-center py-2">No contacts in this campaign.</p>
+                                ) : (
+                                  <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                                    {selectedCampaignContacts.map((cc: any) => {
+                                      const ccStatus: Record<string, string> = { PENDING: 'text-slate-400', CALLING: 'text-amber-400', COMPLETED: 'text-emerald-400', NO_ANSWER: 'text-red-400', FAILED: 'text-red-500' };
+                                      return (
+                                        <div key={cc.id} className="flex items-center justify-between text-xs p-2 rounded-lg bg-slate-900/60 border border-slate-800">
+                                          <div>
+                                            <span className="text-white font-semibold">{cc.name}</span>
+                                            <span className="text-slate-400 ml-2 font-mono">{cc.phone_number}</span>
+                                          </div>
+                                          <div className="flex items-center space-x-2">
+                                            <span className={`font-bold ${ccStatus[cc.status] || 'text-slate-400'}`}>{cc.status}</span>
+                                            <span className="text-slate-500">×{cc.attempt_count}</span>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ============================================================ */}
+            {/* VIEW: CALL HISTORY — Recording player + Transcript viewer     */}
+            {/* ============================================================ */}
+            {activeWorkspaceMode === 'callhistory' && (
+              <div className="space-y-4">
+                {isCallHistoryLoading ? (
+                  <div className="flex items-center justify-center py-12 text-slate-400 text-xs">
+                    <RefreshCw className="w-4 h-4 animate-spin mr-2" /> Loading call history...
+                  </div>
+                ) : callHistory.length === 0 ? (
+                  <div className="text-center py-12 space-y-2">
+                    <Headphones className="w-10 h-10 text-slate-600 mx-auto" />
+                    <p className="text-slate-400 text-sm font-medium">No calls found for your contacts yet.</p>
+                    <p className="text-slate-500 text-xs">Calls will appear here once your contacts have been reached.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3 max-h-[460px] overflow-y-auto pr-1">
+                    {callHistory.map(call => {
+                      const isExpanded = expandedCallId === call.id;
+                      const isTranscriptOpen = expandedTranscriptId === call.id;
+                      const isPlaying = playingRecordingId === call.id;
+                      const durationMin = Math.floor((call.duration_s || 0) / 60);
+                      const durationSec = (call.duration_s || 0) % 60;
+                      const sentimentColors: Record<string, string> = { positive: 'text-emerald-400', neutral: 'text-slate-400', negative: 'text-red-400' };
+                      const callDate = call.created_at ? new Date(call.created_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-';
+                      return (
+                        <div key={call.id} className={`rounded-2xl border transition-all ${isExpanded ? 'bg-amber-950/10 border-amber-500/30' : 'bg-slate-950/60 border-slate-800 hover:border-slate-700'}`}>
+                          <div className="p-4 flex flex-col sm:flex-row sm:items-center gap-3 cursor-pointer" onClick={() => setExpandedCallId(isExpanded ? null : call.id)}>
+                            <div className="flex items-center space-x-3 flex-1 min-w-0">
+                              <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${call.direction === 'inbound' ? 'bg-blue-500/15 border border-blue-500/30' : 'bg-indigo-500/15 border border-indigo-500/30'}`}>
+                                {call.direction === 'inbound' ? <PhoneIncoming className="w-4 h-4 text-blue-400" /> : <PhoneCall className="w-4 h-4 text-indigo-400" />}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-sm font-extrabold text-white truncate">{call.contact_name}</p>
+                                <p className="text-xs text-slate-400 font-mono">{call.contact_phone}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3 flex-wrap">
+                              <div className="text-right">
+                                <p className="text-xs font-mono text-slate-300">{durationMin}:{String(durationSec).padStart(2, '0')}</p>
+                                <p className="text-[10px] text-slate-500">{callDate}</p>
+                              </div>
+                              {call.sentiment && <span className={`text-[10px] font-bold capitalize ${sentimentColors[call.sentiment] || sentimentColors.neutral}`}>● {call.sentiment}</span>}
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${call.status === 'completed' ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' : 'bg-slate-700 text-slate-300 border-slate-600'}`}>{call.status}</span>
+                              {isExpanded ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+                            </div>
+                          </div>
+
+                          {isExpanded && (
+                            <div className="px-4 pb-4 space-y-3 border-t border-slate-800/60 pt-3">
+                              {/* AI Summary */}
+                              {(call.ai_summary || call.intent_detected) && (
+                                <div className="p-3 rounded-xl bg-indigo-950/30 border border-indigo-500/20">
+                                  <div className="flex items-center space-x-1.5 mb-1.5">
+                                    <Brain className="w-3.5 h-3.5 text-purple-400" />
+                                    <span className="text-[10px] font-bold text-purple-300 uppercase tracking-wider">AI Analysis</span>
+                                    {call.intent_detected && (
+                                      <span className="ml-auto px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 text-[10px] font-bold border border-emerald-500/30">{call.intent_detected}</span>
+                                    )}
+                                  </div>
+                                  {call.ai_summary && <p className="text-xs text-slate-300 leading-relaxed">{call.ai_summary}</p>}
+                                </div>
+                              )}
+
+                              {/* Recording Player */}
+                              {call.recording_url ? (
+                                <div className="p-3 rounded-xl bg-slate-900/70 border border-slate-800 space-y-2">
+                                  <div className="flex items-center space-x-2 mb-1">
+                                    <Headphones className="w-3.5 h-3.5 text-amber-400" />
+                                    <span className="text-[10px] font-bold text-amber-300 uppercase tracking-wider">Call Recording</span>
+                                  </div>
+                                  <audio
+                                    controls
+                                    src={`/api/v1/calls/audio/${call.recording_url.split('/').pop()}`}
+                                    className="w-full h-8 rounded-lg"
+                                    onPlay={() => setPlayingRecordingId(call.id)}
+                                    onPause={() => setPlayingRecordingId(null)}
+                                  />
+                                </div>
+                              ) : (
+                                <div className="p-3 rounded-xl bg-slate-900/50 border border-slate-800 text-xs text-slate-500 flex items-center space-x-2">
+                                  <VolumeX className="w-4 h-4" /><span>No recording available for this call.</span>
+                                </div>
+                              )}
+
+                              {/* Transcript Viewer */}
+                              {call.transcript && call.transcript.length > 0 && (
+                                <div className="rounded-xl border border-slate-800 overflow-hidden">
+                                  <button
+                                    onClick={() => setExpandedTranscriptId(isTranscriptOpen ? null : call.id)}
+                                    className="w-full flex items-center justify-between px-3.5 py-2.5 bg-slate-900/70 text-xs font-bold text-slate-300 hover:text-white transition-all"
+                                  >
+                                    <div className="flex items-center space-x-2">
+                                      <FileText className="w-3.5 h-3.5 text-indigo-400" />
+                                      <span>Conversation Transcript ({call.transcript.length} turns)</span>
+                                    </div>
+                                    {isTranscriptOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                  </button>
+                                  {isTranscriptOpen && (
+                                    <div className="max-h-52 overflow-y-auto p-3 space-y-2 bg-slate-950/80">
+                                      {call.transcript.map((turn, i) => (
+                                        <div key={i} className={`flex ${turn.role === 'agent' || turn.role === 'assistant' ? 'justify-start' : 'justify-end'}`}>
+                                          <div className={`max-w-[85%] px-3 py-2 rounded-xl text-xs leading-relaxed ${turn.role === 'agent' || turn.role === 'assistant' ? 'bg-indigo-950/60 border border-indigo-500/20 text-indigo-100' : 'bg-slate-800 border border-slate-700 text-slate-200'}`}>
+                                            <span className="block text-[9px] font-bold mb-1 opacity-60 uppercase tracking-wider">{turn.role === 'agent' || turn.role === 'assistant' ? '🤖 AI Bot' : '👤 Customer'}</span>
+                                            {turn.content}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Quick action */}
+                              <div className="flex items-center space-x-2 pt-1">
+                                <button onClick={() => handleInitiateCall(call.contact_phone, call.contact_name, call.contact_id)}
+                                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center space-x-1.5 shadow-md shadow-emerald-600/20 transition-all active:scale-95">
+                                  <PhoneCall className="w-3.5 h-3.5" /><span>Call Again</span>
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
 

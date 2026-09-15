@@ -192,6 +192,8 @@ export interface Campaign {
   calls_per_minute: number;
   max_retries: number;
   contact_count?: number;
+  assigned_agent_id?: string;
+  assigned_agent_name?: string;
   created_at: string;
   updated_at: string;
 }
@@ -291,5 +293,47 @@ export interface AgentSession {
   token: string;
   agent: AgentProfile;
   stats: AgentStats;
+}
+
+export interface AgentContact {
+  id: string;
+  name: string;
+  phone_number: string;
+  email?: string;
+  status: string;
+  preferred_language: string;
+  lead_source?: string;
+  lead_owner_id?: string;
+  last_called_at?: string;
+  created_at: string;
+  updated_at: string;
+  total_calls: number;
+  intent_score?: number;
+  bot_summary?: string;
+  last_intent?: string;
+  last_disposition?: string;
+  callback_scheduled_for?: string;
+  agent_notes?: Array<{ text: string; timestamp: string; agent_id: string; disposition?: string }>;
+  custom_fields?: Record<string, any>;
+}
+
+export interface AgentCallHistory {
+  id: string;
+  from_number: string;
+  to_number: string;
+  contact_id?: string;
+  contact_name: string;
+  contact_phone: string;
+  direction: string;
+  status: string;
+  duration_s: number;
+  recording_url?: string;
+  transcript: Array<{ role: string; content: string }>;
+  intent_detected?: string;
+  ai_summary?: string;
+  sentiment?: string;
+  created_at?: string;
+  started_at?: string;
+  ended_at?: string;
 }
 

@@ -31,12 +31,84 @@ async def list_calls(
     sessions = query.order_by(CallSession.created_at.desc()).limit(limit).all()
     return sessions
 
+@router.get("/agent/{agent_id}")
+async def list_calls_for_agent(agent_id: str, limit: int = 100, db: Session = Depends(get_db)):
+    """
+    Returns all calls associated with an agent:
+    - Calls to contacts owned by this agent (lead_owner_id == agent_id)
+    - Calls from campaigns assigned to this agent (Campaign.assigned_agent_id == agent_id)
+    Includes recording_url, full transcript[], and intent_detected from CallInteraction.
+    """
+    from services.dashboard.app.models import Contact as ContactModel, Campaign as CampaignModel
+    # Get contact IDs owned by this agent
+    owned_contact_ids = [
+        c.id for c in db.query(ContactModel).filter(ContactModel.lead_owner_id == agent_id).all()
+    ]
+    # Get campaign IDs assigned to this agent
+    assigned_campaign_ids = [
+        c.id for c in db.query(CampaignModel).filter(CampaignModel.assigned_agent_id == agent_id).all()
+    ]
+
+    all_calls = db.query(CallSession).order_by(CallSession.created_at.desc()).limit(limit).all()
+
+    result = []
+    for call in all_calls:
+        in_owned = call.contact_id and call.contact_id in owned_contact_ids
+        in_campaign = call.campaign_id and call.campaign_id in assigned_campaign_ids if hasattr(call, 'campaign_id') else False
+        if not (in_owned or in_campaign or not owned_contact_ids):
+            continue
+
+        # Get intent from CallInteraction
+        intent_detected = None
+        ai_summary = None
+        sentiment = None
+        if call.interactions:
+            last_interaction = call.interactions[-1]
+            intent_detected = last_interaction.intent_detected
+            ai_summary = last_interaction.ai_summary
+            sentiment = getattr(last_interaction, 'sentiment', None)
+
+        # Get contact details
+        contact_name = None
+        contact_phone = None
+        if call.contact:
+            contact_name = call.contact.name
+            contact_phone = call.contact.phone_number
+            cf = call.contact.custom_fields or {}
+            if not intent_detected:
+                intent_detected = cf.get("last_intent") or cf.get("bot_intent")
+            if not ai_summary:
+                ai_summary = cf.get("bot_summary")
+
+        result.append({
+            "id": call.id,
+            "from_number": call.from_number,
+            "to_number": call.to_number,
+            "contact_id": call.contact_id,
+            "contact_name": contact_name or call.from_number,
+            "contact_phone": contact_phone or call.to_number,
+            "direction": call.direction,
+            "status": call.status,
+            "duration_s": call.duration_s or 0,
+            "recording_url": call.recording_url,
+            "transcript": call.transcript or [],
+            "intent_detected": intent_detected,
+            "ai_summary": ai_summary,
+            "sentiment": sentiment,
+            "created_at": call.created_at.isoformat() if call.created_at else None,
+            "started_at": call.started_at.isoformat() if call.started_at else None,
+            "ended_at": call.ended_at.isoformat() if call.ended_at else None,
+        })
+
+    return result
+
 @router.get("/audio/{wav_name}")
 async def serve_call_audio(wav_name: str):
     """Serves recorded telephony audio WAV files for turn-by-turn live playback."""
     import os
     from fastapi.responses import FileResponse
     from pathlib import Path
+    safe_name = os.path.basename(wav_name)
     workspace_dir = str(Path(__file__).resolve().parents[4])
     candidates = [
         os.path.join(workspace_dir, safe_name),

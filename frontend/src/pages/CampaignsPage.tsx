@@ -42,6 +42,21 @@ export const CampaignsPage: React.FC<CampaignsPageProps> = ({
   const [includeSoftphone, setIncludeSoftphone] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Agent Assignment State
+  const [availableAgents, setAvailableAgents] = useState<{ id: string; name: string; email?: string }[]>([]);
+  const [assignedAgentId, setAssignedAgentId] = useState<string>('');
+
+  React.useEffect(() => {
+    fetch('/api/v1/auth/agents')
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          setAvailableAgents(data);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   // Edit Campaign Script States
   const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null);
   const [editScript, setEditScript] = useState('');
@@ -217,6 +232,8 @@ export const CampaignsPage: React.FC<CampaignsPageProps> = ({
       return;
     }
 
+    const chosenAgent = availableAgents.find(a => a.id === assignedAgentId);
+
     onCreateCampaign({
       name,
       type,
@@ -224,11 +241,14 @@ export const CampaignsPage: React.FC<CampaignsPageProps> = ({
       max_concurrency: concurrency,
       voice_model: voiceModel,
       contact_ids: finalContactIds,
-      custom_phone_numbers: parsedManual
+      custom_phone_numbers: parsedManual,
+      assigned_agent_id: assignedAgentId || undefined,
+      assigned_agent_name: chosenAgent ? chosenAgent.name : undefined
     });
 
     setShowModal(false);
     setName('');
+    setAssignedAgentId('');
     setScriptContent('');
     setVoiceModel('hi_pratham');
     setSelectedContactIds([]);
@@ -421,6 +441,18 @@ export const CampaignsPage: React.FC<CampaignsPageProps> = ({
                     </span>
                   </div>
 
+                  {c.assigned_agent_name && (
+                    <div className="flex justify-between text-xs text-slate-400">
+                      <span className="flex items-center space-x-1">
+                        <Users className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Assigned Agent</span>
+                      </span>
+                      <span className="font-semibold text-emerald-400 font-mono bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                        {c.assigned_agent_name}
+                      </span>
+                    </div>
+                  )}
+
                   <div className="flex justify-between text-xs text-slate-400">
                     <span>Concurrency Limit</span>
                     <span className="font-semibold text-slate-200">{c.max_concurrency} workers</span>
@@ -581,6 +613,28 @@ export const CampaignsPage: React.FC<CampaignsPageProps> = ({
                   onChange={(e) => setScriptContent(e.target.value)}
                   className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-slate-200 focus:outline-none focus:border-brand-500 text-sm"
                 ></textarea>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-medium mb-1 flex items-center space-x-1.5">
+                  <Users className="w-3.5 h-3.5 text-brand-400" />
+                  <span>Assign to Agent (Optional)</span>
+                </label>
+                <select
+                  value={assignedAgentId}
+                  onChange={(e) => setAssignedAgentId(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-brand-500 text-sm"
+                >
+                  <option value="">Unassigned (General / Automated Campaign)</option>
+                  {availableAgents.map((ag) => (
+                    <option key={ag.id} value={ag.id}>
+                      {ag.name} ({ag.email || 'Agent'})
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Assigning to an agent makes this campaign and its live call interactions directly accessible on that agent's portal.
+                </p>
               </div>
 
               {/* AUDIENCE & CONTACT SELECTION SECTION */}

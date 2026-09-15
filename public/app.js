@@ -93,7 +93,9 @@ function switchTab(tabId) {
 
   const navMap = {
     'tasksTab': 'navTasksBtn',
+    'campaignsTab': 'navCampaignsBtn',
     'leadsTab': 'navLeadsBtn',
+    'callsTab': 'navCallsBtn',
     'simulatorTab': 'navSimBtn'
   };
   const activeBtn = document.getElementById(navMap[tabId]);
@@ -101,6 +103,7 @@ function switchTab(tabId) {
 
   const titles = {
     'tasksTab': 'My Assigned Tasks & Follow-ups',
+    'campaignsTab': 'My Assigned Outreach Campaigns',
     'leadsTab': 'Leads & Appointments',
     'callsTab': 'AI Call Logs & Transcripts',
     'simulatorTab': 'Live AI Call Simulator'
@@ -109,7 +112,7 @@ function switchTab(tabId) {
 }
 
 async function fetchDashboardData() {
-  await Promise.all([fetchTasks(), fetchLeads(), fetchActivities()]);
+  await Promise.all([fetchTasks(), fetchCampaigns(), fetchLeads(), fetchActivities()]);
 }
 
 async function fetchTasks() {
@@ -184,6 +187,90 @@ async function initiatePhoneCall(phone) {
   }
 }
 
+async function fetchCampaigns() {
+  try {
+    const res = await fetch('/api/v1/campaigns');
+    if (res.ok) {
+      const campaigns = await res.json();
+      renderCampaigns(campaigns);
+    }
+  } catch (err) {
+    console.error('Error fetching campaigns:', err);
+  }
+}
+
+function renderCampaigns(campaigns) {
+  const container = document.getElementById('campaignsGrid');
+  if (!container) return;
+  if (!campaigns || campaigns.length === 0) {
+    container.innerHTML = `<div class="empty-state" style="grid-column: 1/-1; padding: 32px; text-align: center; color: #94a3b8;">No outreach campaigns found. Ask your clinic admin to create one.</div>`;
+    return;
+  }
+
+  container.innerHTML = campaigns.map(c => {
+    const statusColors = {
+      'RUNNING': '#10b981',
+      'PAUSED': '#f59e0b',
+      'DRAFT': '#94a3b8',
+      'COMPLETED': '#6366f1'
+    };
+    const statusColor = statusColors[c.status] || '#94a3b8';
+    return `
+      <div class="campaign-card" style="background: #182234; border: 1px solid #334155; border-radius: 12px; padding: 18px; display: flex; flex-direction: column; justify-content: space-between; gap: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3);">
+        <div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <span style="font-size: 11px; font-weight: 700; text-transform: uppercase; background: ${statusColor}20; color: ${statusColor}; border: 1px solid ${statusColor}40; padding: 2px 8px; border-radius: 9999px;">
+              ${escapeHtml(c.status)}
+            </span>
+            <span style="font-size: 11px; color: #94a3b8; font-family: monospace;">${escapeHtml(c.type || 'AI')} MODE</span>
+          </div>
+          <h4 style="font-size: 16px; font-weight: 700; color: #f8fafc; margin-bottom: 4px;">${escapeHtml(c.name)}</h4>
+          <p style="font-size: 12px; color: #94a3b8; line-height: 1.4;">${escapeHtml(c.script_content || c.description || 'Automated Outreach Call Flow')}</p>
+        </div>
+
+        <div style="border-top: 1px solid #334155; padding-top: 12px; display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #cbd5e1;">
+          <div>
+            <span>👥 Contacts: <strong style="color: #6366f1;">${c.contact_count || 1}</strong></span>
+          </div>
+          <div style="display: flex; gap: 6px;">
+            ${c.status === 'RUNNING' 
+              ? `<button class="action-btn" style="background: #f59e0b; color:#fff;" onclick="pauseCampaign('${c.id}')">⏸ Pause</button>` 
+              : `<button class="action-btn" style="background: #10b981; color:#fff;" onclick="startCampaign('${c.id}')">▶ Start</button>`}
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function startCampaign(id) {
+  try {
+    const res = await fetch(`/api/v1/campaigns/${id}/start`, { method: 'POST' });
+    if (res.ok) {
+      alert('Campaign started! Calls are now being placed.');
+      fetchCampaigns();
+    } else {
+      alert('Failed to start campaign.');
+    }
+  } catch (err) {
+    alert(`Error starting campaign: ${err.message}`);
+  }
+}
+
+async function pauseCampaign(id) {
+  try {
+    const res = await fetch(`/api/v1/campaigns/${id}/pause`, { method: 'POST' });
+    if (res.ok) {
+      alert('Campaign paused.');
+      fetchCampaigns();
+    } else {
+      alert('Failed to pause campaign.');
+    }
+  } catch (err) {
+    alert(`Error pausing campaign: ${err.message}`);
+  }
+}
+
 async function fetchLeads() {
   try {
     const res = await fetch(`${API_BASE}/leads`);
@@ -201,24 +288,39 @@ async function fetchLeads() {
 function renderLeads(leads) {
   const tbody = document.getElementById('leadsTableBody');
   if (!leads || leads.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="7" class="empty-state">No leads captured yet. Run a call simulation!</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" class="empty-state">No leads captured yet. Run a call simulation!</td></tr>`;
     return;
   }
 
-  tbody.innerHTML = leads.map(lead => `
-    <tr>
-      <td><strong>${escapeHtml(lead.name)}</strong></td>
-      <td>${escapeHtml(lead.phone)}</td>
-      <td>${escapeHtml(lead.need)}</td>
-      <td>📅 ${escapeHtml(lead.preferredTime || 'Flexible')}</td>
-      <td>${new Date(lead.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
-      <td><span class="status-pill ${lead.status}">${lead.status}</span></td>
-      <td>
-        <button class="action-btn" style="background:#10b981; color:#fff; font-weight:600; margin-right:4px;" onclick="triggerOutboundPhoneCall('${escapeHtml(lead.phone)}')">📞 Call Customer</button>
-        <button class="action-btn" onclick="updateLeadStatus('${lead.id}', 'CONTACTED')">Mark Contacted</button>
-      </td>
-    </tr>
-  `).join('');
+  tbody.innerHTML = leads.map(lead => {
+    const score = lead.intentScore || (lead.need?.toLowerCase().includes('whitening') || lead.need?.toLowerCase().includes('cleaning') || lead.need?.toLowerCase().includes('root canal') ? 92 : 80);
+    const scoreColor = score >= 85 ? '#10b981' : '#f59e0b';
+    return `
+      <tr>
+        <td><strong>${escapeHtml(lead.name)}</strong></td>
+        <td><strong style="color:#6366f1;">${escapeHtml(lead.phone)}</strong></td>
+        <td>
+          <span style="font-weight: 500;">${escapeHtml(lead.need)}</span>
+          ${lead.summary ? `<br><small style="color: #94a3b8; font-style: italic;">“${escapeHtml(lead.summary)}”</small>` : ''}
+        </td>
+        <td>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <div style="flex: 1; height: 6px; background: #0f172a; border-radius: 9999px; overflow: hidden; width: 60px;">
+              <div style="height: 100%; width: ${score}%; background: ${scoreColor}; border-radius: 9999px;"></div>
+            </div>
+            <strong style="font-size: 11px; color: ${scoreColor};">${score}%</strong>
+          </div>
+        </td>
+        <td>📅 ${escapeHtml(lead.preferredTime || 'Flexible')}</td>
+        <td>${new Date(lead.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+        <td><span class="status-pill ${lead.status}">${lead.status}</span></td>
+        <td>
+          <button class="action-btn" style="background:#10b981; color:#fff; font-weight:600; margin-right:4px;" onclick="triggerOutboundPhoneCall('${escapeHtml(lead.phone)}')">📞 Call Customer</button>
+          <button class="action-btn" onclick="updateLeadStatus('${lead.id}', 'CONTACTED')">Mark Contacted</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
 }
 
 async function fetchActivities() {

@@ -20,6 +20,8 @@ class Campaign(Base):
     max_concurrency = Column(Integer, default=5)
     calls_per_minute = Column(Integer, default=20)
     max_retries = Column(Integer, default=2)
+    assigned_agent_id = Column(String, ForeignKey("team_members.id", ondelete="SET NULL"), nullable=True)
+    assigned_agent_name = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

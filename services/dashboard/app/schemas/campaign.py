@@ -15,11 +15,15 @@ class CampaignBase(BaseModel):
 class CampaignCreate(CampaignBase):
     contact_ids: Optional[List[str]] = []
     custom_phone_numbers: Optional[List[str]] = []
+    assigned_agent_id: Optional[str] = None
+    assigned_agent_name: Optional[str] = None
 
 class CampaignResponse(CampaignBase):
     id: str
     status: str
     contact_count: Optional[int] = 0
+    assigned_agent_id: Optional[str] = None
+    assigned_agent_name: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
