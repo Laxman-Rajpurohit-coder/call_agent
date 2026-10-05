@@ -38,6 +38,10 @@ python3 -m services.stt.worker &
 echo "🚀 Starting Call Gateway on port 9092..."
 python3 -m services.call_gateway.server &
 
+# 7. Start Telephony AI Audio Engine on internal port 9096
+echo "🚀 Starting Telephony AI Engine on port 9096..."
+python3 path_c_hybrid_agent/twilio_gateway.py &
+
 # Wait for background services to bind
 sleep 3
 

@@ -28,6 +28,7 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 const app = express();
+app.set('trust proxy', 1);
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
@@ -70,9 +71,10 @@ app.use('/api/leads', leadsRoutes);
 app.use('/api/activities', activitiesRoutes);
 app.use('/api/telephony', telephonyRoutes);
 
-// Telephony Webhook Alias Routes for CPaaS (Exotel / Twilio)
+// Telephony Webhook Alias Routes for CPaaS (Exotel / Twilio / Vobiz)
 app.all('/voice', (req, res, next) => { req.url = '/webhook'; telephonyRoutes(req, res, next); });
 app.all('/twiml', (req, res, next) => { req.url = '/webhook'; telephonyRoutes(req, res, next); });
+app.all('/answer', (req, res, next) => { req.url = '/webhook'; telephonyRoutes(req, res, next); });
 
 // Proxy all /api/v1 calls to FastAPI Dashboard Platform Backend (Port 9090)
 app.use('/api/v1', async (req, res) => {

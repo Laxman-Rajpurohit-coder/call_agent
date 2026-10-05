@@ -260,8 +260,8 @@ async def handle_voice_webhook(request):
         logger.info("⚡ Incoming WebSocket Upgrade on Webhook Route from %s -> Forwarding to WebSocket Handler", request.remote)
         return await handle_media_websocket(request)
 
-    host = request.headers.get("Host", PUBLIC_DOMAIN)
-    scheme = "wss" if "ngrok" in host or request.scheme == "https" else "ws"
+    host = request.headers.get("Host", os.environ.get("RAILWAY_PUBLIC_DOMAIN", "callagent-production-5b4e.up.railway.app"))
+    scheme = "wss" if "ngrok" in host or "railway.app" in host or request.scheme == "https" or request.headers.get("X-Forwarded-Proto") == "https" else "ws"
     ws_url = f"{scheme}://{host}/media-stream"
 
     # Exotel ExoML for Voicebot — fetched by Exotel when the called number picks up.

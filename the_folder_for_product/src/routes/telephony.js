@@ -11,8 +11,9 @@ const handleWebhook = async (req, res) => {
     console.log(`[Telephony Webhook] Query:`, JSON.stringify(req.query));
     console.log(`[Telephony Webhook] Body:`, JSON.stringify(req.body));
 
-    const host = req.headers.host || 'drool-envoy-sandy.ngrok-free.dev';
-    const wsScheme = (req.secure || host.includes('ngrok')) ? 'wss' : 'ws';
+    const host = req.headers.host || process.env.RAILWAY_PUBLIC_DOMAIN || 'callagent-production-5b4e.up.railway.app';
+    const isSecure = req.secure || host.includes('railway.app') || host.includes('ngrok') || req.headers['x-forwarded-proto'] === 'https';
+    const wsScheme = isSecure ? 'wss' : 'ws';
     const streamUrl = `${wsScheme}://${host}/media-stream`;
 
     // Exotel Stream Applet returns JSON wss URL if requested or format=json or Exotel Passthru
@@ -49,7 +50,10 @@ router.post('/outbound-call', async (req, res) => {
     const vobizAuthId = process.env.VOBIZ_AUTH_ID;
     const vobizToken = process.env.VOBIZ_AUTH_TOKEN;
     const vobizCallerId = process.env.VOBIZ_CALLER_ID || '918064269009';
-    const vobizPublicUrl = (process.env.VOBIZ_PUBLIC_URL || 'https://drool-envoy-sandy.ngrok-free.dev').replace(/\/$/, '');
+    const railwayDomain = process.env.RAILWAY_PUBLIC_DOMAIN || 'callagent-production-5b4e.up.railway.app';
+    const vobizPublicUrl = (process.env.VOBIZ_PUBLIC_URL && !process.env.VOBIZ_PUBLIC_URL.includes('ngrok'))
+      ? process.env.VOBIZ_PUBLIC_URL.replace(/\/$/, '')
+      : `https://${railwayDomain}`;
 
     const digitsOnly = to.replace(/\D/g, '');
     let cleanVobizTo = digitsOnly;
@@ -99,8 +103,10 @@ router.post('/outbound-call', async (req, res) => {
     const authHeader = 'Basic ' + Buffer.from(`${apiKey}:${apiToken}`).toString('base64');
     const exotelUrl = `https://api.exotel.com/v1/Accounts/${accountSid}/Calls/connect.json`;
 
-    // Route call through public ngrok webhook to start Voicebot media stream
-    const publicDomain = process.env.PUBLIC_DOMAIN || 'drool-envoy-sandy.ngrok-free.dev';
+    // Route call through public Railway webhook to start Voicebot media stream
+    const publicDomain = (process.env.PUBLIC_DOMAIN && !process.env.PUBLIC_DOMAIN.includes('ngrok'))
+      ? process.env.PUBLIC_DOMAIN
+      : (process.env.RAILWAY_PUBLIC_DOMAIN || 'callagent-production-5b4e.up.railway.app');
     const webhookUrl = `https://${publicDomain}/api/telephony/webhook`;
     const params = new URLSearchParams({
       From: cleanTo,
