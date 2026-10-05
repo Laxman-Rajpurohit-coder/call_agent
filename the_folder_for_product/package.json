@@ -22,7 +22,8 @@
     "dotenv": "^17.4.2",
     "express": "^4.19.2",
     "ngrok": "^4.3.3",
-    "socket.io": "^4.7.5"
+    "socket.io": "^4.7.5",
+    "ws": "^8.16.0"
   },
   "devDependencies": {
     "prisma": "^6.4.1"

@@ -15,6 +15,7 @@ storage/*.db
 node_modules/
 .vite/
 frontend/node_modules/
+*.db
 *.db-shm
 *.db-wal
 data/*.json

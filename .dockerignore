@@ -1,0 +1,16 @@
+venv/
+.venv/
+the_folder_for_product/venv/
+node_modules/
+the_folder_for_product/node_modules/
+the_folder_for_product/frontend/node_modules/
+.git/
+.agents/
+_archive/
+MicroSIP*/
+*.mp4
+*.mkv
+*.wav
+__pycache__/
+*.pyc
+.pytest_cache/
