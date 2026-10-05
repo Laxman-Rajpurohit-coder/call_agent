@@ -89,21 +89,58 @@ async def cleanup_stale_endpoint(db: Session = Depends(get_db)):
 
 @router.post("/{call_id}/hangup")
 async def hangup_call_endpoint(call_id: str, db: Session = Depends(get_db)):
-    """Terminates an active call session, sending SIP BYE and marking it completed."""
+    """Terminates an active call session across all telephony engines (Softphone, Vobiz Bridge, Carrier)."""
+    import httpx
     from services.dashboard.app.services.event_bus import broadcast_call_event
     session = db.query(CallSession).filter(CallSession.id == call_id).first()
     if not session:
-        raise HTTPException(status_code=404, detail="Call session not found")
-    
+        # Check by vobiz_call_uuid in custom_fields
+        all_active = db.query(CallSession).filter(
+            CallSession.status.in_(["in_progress", "active", "connected", "initiated", "RINGING"])
+        ).all()
+        for s in all_active:
+            if s.custom_fields and isinstance(s.custom_fields, dict) and s.custom_fields.get("vobiz_call_uuid") == call_id:
+                session = s
+                break
+        if not session:
+            raise HTTPException(status_code=404, detail="Call session not found")
+
+    target_id = session.id
+    custom_cfg = session.custom_fields if isinstance(session.custom_fields, dict) else {}
+    vobiz_uuid = custom_cfg.get("vobiz_call_uuid")
+
     # 1. Terminate softphone session if active in-memory
     try:
-        await call_registry.terminate_call(call_id)
+        await call_registry.terminate_call(target_id)
         from microsip_direct_caller import terminate_call
-        await terminate_call(call_id)
+        await terminate_call(target_id)
     except Exception as ex:
-        print(f"[Hangup Warning] {ex}")
-    
-    # 2. Finalize DB session
+        print(f"[Hangup Softphone Warning] {ex}")
+
+    # 2. Terminate Vobiz Bridge WebSocket session (Port 9098)
+    for id_to_close in filter(None, [target_id, vobiz_uuid, call_id]):
+        try:
+            async with httpx.AsyncClient(timeout=2.0) as client:
+                res = await client.post(f"http://127.0.0.1:9098/calls/{id_to_close}/hangup")
+                if res.status_code == 200:
+                    print(f"⚡ [Vobiz Bridge Disconnected]: call_id={id_to_close}")
+                    break
+        except Exception as bridge_err:
+            print(f"[Hangup Vobiz Bridge Warning] {bridge_err}")
+
+    # 3. Direct Vobiz Carrier API Hangup (if Vobiz Auth is configured)
+    vobiz_auth = os.environ.get("VOBIZ_AUTH_ID")
+    vobiz_token = os.environ.get("VOBIZ_AUTH_TOKEN")
+    carrier_call_id = vobiz_uuid or target_id
+    if vobiz_auth and vobiz_token and carrier_call_id:
+        try:
+            headers = {"X-Auth-ID": vobiz_auth, "X-Auth-Token": vobiz_token}
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                await client.delete(f"https://api.vobiz.ai/api/v1/Account/{vobiz_auth}/Call/{carrier_call_id}/", headers=headers)
+        except Exception as vobiz_api_err:
+            print(f"[Vobiz Carrier Hangup API Notice]: {vobiz_api_err}")
+
+    # 4. Finalize DB session
     session.status = "completed"
     session.media_status = "DISCONNECTED"
     session.vad_state = "IDLE"
@@ -111,14 +148,14 @@ async def hangup_call_endpoint(call_id: str, db: Session = Depends(get_db)):
     if session.started_at:
         session.duration_s = max(round((session.ended_at - session.started_at).total_seconds(), 1), session.duration_s or 0.0)
     db.commit()
-    
-    # 3. Broadcast CALL_ENDED event with per-call sequence
+
+    # 5. Broadcast CALL_ENDED event with per-call sequence
     if broadcast_call_event:
-        await broadcast_call_event("CALL_ENDED", call_id, {
+        await broadcast_call_event("CALL_ENDED", target_id, {
             "reason": "OPERATOR_HANGUP",
             "duration_s": session.duration_s
         })
-    return {"status": "terminated", "call_id": call_id, "duration_s": session.duration_s}
+    return {"status": "terminated", "call_id": target_id, "duration_s": session.duration_s}
 
 @router.get("", response_model=List[CallSessionResponse])
 async def list_calls(
@@ -292,6 +329,40 @@ async def trigger_manual_dial(
     prompt = req.system_prompt.strip() if (mode == "INTERACTIVE_AI" and req.system_prompt) else ""
     voice = req.voice_model or "deepgram_aura_asteria"
 
+    # Respect user-provided prompt, voice, and script from modal
+    first_greeting = None
+    if mode == "INTERACTIVE_AI":
+        if req.system_prompt and req.system_prompt.strip():
+            prompt = req.system_prompt.strip()
+            voice = req.voice_model or "cartesia_hi_sonic"
+            # Will be personalized based on prompt in runner
+            first_greeting = None
+        else:
+            # Fallback ONLY when user left prompt empty: resolve default org profile
+            from services.dashboard.app.services.incoming_call_runtime import resolve_incoming_call, compile_runtime_prompt
+            try:
+                org_id = contact.organization_id
+                _, _, snapshot = resolve_incoming_call(db, to_number="default", organization_id=org_id)
+                prompt = compile_runtime_prompt(snapshot, {"name": contact.name, "phone": phone})
+                if not req.voice_model:
+                    if snapshot.get("voice_id"):
+                        voice = snapshot.get("voice_id")
+                    elif snapshot.get("ai_model"):
+                        voice = snapshot.get("ai_model")
+                lang = snapshot.get("primary_language", "").lower()
+                if "hi" in lang:
+                    first_greeting = f"Namaste! Main {snapshot.get('ai_name', 'Ananya')} baat kar rahi hoon. Aapki kya madad kar sakti hoon?"
+                elif "en" in lang:
+                    first_greeting = f"Hello! This is {snapshot.get('ai_name', 'Ananya')}. How can I help you today?"
+            except Exception as e:
+                print(f"[Fallback Config Warning] {e}")
+    elif mode == "SCRIPT":
+        script = req.script_content.strip() if req.script_content else ""
+        prompt = ""
+        first_greeting = None
+        voice = req.voice_model or "cartesia_hi_sonic"
+
+
     campaign = Campaign(
         name=f"Manual Call ({mode}): {contact.name or phone}",
         description=prompt if mode == "INTERACTIVE_AI" else script,
@@ -309,16 +380,18 @@ async def trigger_manual_dial(
     db.add(cc)
     db.commit()
 
+    call_id = str(uuid.uuid4())
     # 3. Trigger MicroSIP caller session concurrently without 30s FastAPI background task queueing
     from microsip_direct_caller import run_microsip_session
-    asyncio.create_task(run_microsip_session(campaign.id, script_content=script, voice_model=voice, call_mode=mode, system_prompt=prompt))
+    asyncio.create_task(run_microsip_session(campaign.id, script_content=script, voice_model=voice, call_mode=mode, system_prompt=prompt, first_greeting=first_greeting, call_id=call_id))
 
     return {
         "status": "dialing",
         "message": f"Manual call initiated to {phone}",
         "campaign_id": campaign.id,
         "contact_id": contact.id,
-        "phone_number": phone
+        "phone_number": phone,
+        "call_id": call_id
     }
 
 @router.post("/{call_id}/auto-label")

@@ -23,6 +23,12 @@ def _now() -> datetime:
 class CallSession:
     call_id: str
     tenant_id: str
+    bot_id: Optional[str] = None
+    system_prompt: Optional[str] = None
+    greeting: Optional[str] = None
+    voice_model: Optional[str] = None
+    primary_language: Optional[str] = None
+    call_direction: Optional[str] = "inbound"
     session_id: str = field(default_factory=lambda: str(uuid4()))
     state: CallState = CallState.CREATED
     started_at: datetime = field(default_factory=_now)
@@ -42,6 +48,7 @@ class STTJob:
     call_id: str
     tenant_id: str
     audio_pcm16_8k: bytes
+    primary_language: Optional[str] = None
     requested_at: datetime = field(default_factory=_now)
 
 
@@ -59,6 +66,7 @@ class LLMJob:
     tenant_id: str
     transcript: str
     conversation_history: list[dict]  # [{"role": "user"/"assistant", "content": ...}]
+    system_prompt: Optional[str] = None
     escalation: EscalationLevel = EscalationLevel.LOW
     requested_at: datetime = field(default_factory=_now)
 

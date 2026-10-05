@@ -37,7 +37,7 @@ const handleWebhook = async (req, res) => {
 router.get('/webhook', handleWebhook);
 router.post('/webhook', handleWebhook);
 
-// POST /api/telephony/outbound-call - Trigger automated outbound AI call via Exotel API
+// POST /api/telephony/outbound-call - Trigger automated outbound AI call via Vobiz or Exotel API
 router.post('/outbound-call', async (req, res) => {
   try {
     const to = req.body?.to || req.query?.to;
@@ -45,14 +45,54 @@ router.post('/outbound-call', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Recipient phone number (to) is required.' });
     }
 
+    const provider = req.body?.provider || 'vobiz';
+    const vobizAuthId = process.env.VOBIZ_AUTH_ID;
+    const vobizToken = process.env.VOBIZ_AUTH_TOKEN;
+    const vobizCallerId = process.env.VOBIZ_CALLER_ID || '918064269009';
+    const vobizPublicUrl = (process.env.VOBIZ_PUBLIC_URL || 'https://drool-envoy-sandy.ngrok-free.dev').replace(/\/$/, '');
 
+    const digitsOnly = to.replace(/\D/g, '');
+    let cleanVobizTo = digitsOnly;
+    if (digitsOnly.length === 10) {
+      cleanVobizTo = '91' + digitsOnly;
+    }
+
+    // 1. Primary: VOBIZ API
+    if (vobizAuthId && vobizToken && (provider === 'vobiz' || !process.env.EXOTEL_API_KEY)) {
+      const vobizUrl = `https://api.vobiz.ai/api/v1/Account/${vobizAuthId}/Call/`;
+      const answerUrl = `${vobizPublicUrl}/answer`;
+
+      const vobizRes = await fetch(vobizUrl, {
+        method: 'POST',
+        headers: {
+          'X-Auth-ID': vobizAuthId,
+          'X-Auth-Token': vobizToken,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          from: vobizCallerId,
+          to: cleanVobizTo,
+          answer_url: answerUrl,
+          answer_method: 'POST'
+        })
+      });
+
+      const data = await vobizRes.json();
+      console.log(`[Vobiz Outbound Call] Dialed ${cleanVobizTo} via Vobiz API: HTTP ${vobizRes.status}`, data);
+      if (!vobizRes.ok) {
+        return res.status(vobizRes.status).json({ success: false, error: data.message || 'Vobiz API error' });
+      }
+      return res.json({ success: true, provider: 'vobiz', data });
+    }
+
+    // 2. Secondary Fallback: Exotel API
     const accountSid = process.env.EXOTEL_ACCOUNT_SID || 'snazzyitsolutions1';
     const apiKey = process.env.EXOTEL_API_KEY;
     const apiToken = process.env.EXOTEL_API_TOKEN;
     const callerId = process.env.EXOTEL_VIRTUAL_NUMBER || '08047283364';
 
     if (!apiKey || !apiToken) {
-      return res.status(500).json({ success: false, error: 'Exotel API key or token missing in .env' });
+      return res.status(500).json({ success: false, error: 'Neither Vobiz nor Exotel credentials configured in .env' });
     }
 
     const cleanTo = to.replace(/\s+/g, '').replace(/^\+91/, '0');

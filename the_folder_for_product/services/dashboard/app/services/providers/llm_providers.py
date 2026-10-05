@@ -74,7 +74,7 @@ class GroqProvider(BaseProvider):
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             }
             req_data = json.dumps({
-                "model": "qwen/qwen3.6-27b",
+                "model": "qwen/qwen3.8-27b",
                 "messages": [{"role": "user", "content": prompt}],
                 "max_tokens": 100
             }).encode("utf-8")

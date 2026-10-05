@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Radio, Users, Megaphone, X, CheckSquare, UserCheck, LogOut } from 'lucide-react';
+import { LayoutDashboard, Radio, Users, Megaphone, X, CheckSquare, UserCheck, LogOut, PhoneCall } from 'lucide-react';
 import { AgentSession } from '../types';
 
 interface SidebarProps {
@@ -25,7 +25,8 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
     { id: 'crm', label: 'Voice CRM & Calls', icon: Users },
     { id: 'tasks', label: 'To-Do & Tasks', icon: CheckSquare },
     { id: 'team', label: 'Team Activity', icon: UserCheck },
-    { id: 'campaigns', label: 'Campaign Engine', icon: Megaphone },
+    { id: 'incoming-config', label: 'Incoming Calls', icon: PhoneCall },
+    { id: 'campaigns', label: 'Campaign Engine', icon: Megaphone }
   ];
 
   const handleNavClick = (id: string) => {

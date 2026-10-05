@@ -44,8 +44,10 @@ def classify(transcript: str, stt_confidence: float) -> EscalationLevel:
     if any(phrase in lowered for phrase in _ALWAYS_ESCALATE_PHRASES):
         return EscalationLevel.LOW
 
+    # Low STT confidence should be MEDIUM (clarify / proceed with conversational AI),
+    # never LOW (which triggers an immediate phone line transfer to an Asterisk extension).
     if stt_confidence < STT_CONFIDENCE_LOW:
-        return EscalationLevel.LOW
+        return EscalationLevel.MEDIUM
 
     if stt_confidence < STT_CONFIDENCE_MEDIUM:
         return EscalationLevel.MEDIUM

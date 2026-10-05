@@ -8,6 +8,13 @@ class ContactBase(BaseModel):
     email: Optional[str] = None
     status: Optional[str] = "lead"
     preferred_language: Optional[str] = "hi"
+    company: Optional[str] = None
+    tags: Optional[List[str]] = []
+    is_archived: Optional[bool] = False
+    is_blocked: Optional[bool] = False
+    ai_profile: Optional[Dict[str, Any]] = None
+    lead_owner_id: Optional[str] = None
+    merged_into_id: Optional[str] = None
     custom_fields: Optional[Dict[str, Any]] = {}
 
 class ContactCreate(ContactBase):
@@ -22,6 +29,27 @@ class ContactResponse(ContactBase):
 
     model_config = ConfigDict(from_attributes=True)
 
+class ContactNoteCreate(BaseModel):
+    note: str
+    disposition: Optional[str] = None
+    sentiment: Optional[str] = None
+    remind_in_minutes: Optional[int] = None
+    agent_name: Optional[str] = None
+
+class ContactNoteResponse(BaseModel):
+    id: str
+    contact_id: str
+    organization_id: str
+    agent_id: Optional[str] = None
+    agent_name: Optional[str] = None
+    note: str
+    disposition: Optional[str] = None
+    sentiment: Optional[str] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
 class CallInteractionResponse(BaseModel):
     id: str
     call_id: str
@@ -30,6 +58,15 @@ class CallInteractionResponse(BaseModel):
     ai_summary: Optional[str] = None
     human_handoff_requested: bool = False
     followup_required: bool = False
+    # Unified intent / lead labelling (call_analysis.py) - Optional: old rows have NULLs
+    lead_label: Optional[str] = None
+    evidence_quote: Optional[str] = None
+    sentiment: Optional[str] = None
+    model_name: Optional[str] = None
+    prompt_version: Optional[str] = None
+    followup_date: Optional[datetime] = None
+    is_agent_corrected: Optional[bool] = False
+    agent_notes: Optional[str] = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -74,5 +111,8 @@ class CallSessionResponse(BaseModel):
     agent_name: Optional[str] = None
     voice_model: Optional[str] = None
     handoff_status: Optional[str] = "NONE"
+    handoff_reason: Optional[str] = None
+    ai_summary: Optional[str] = None
+    analysis_status: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)

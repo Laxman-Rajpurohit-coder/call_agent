@@ -225,8 +225,16 @@ def start_call(
     try:
         existing = db.query(CallSession).filter(CallSession.id == call_id).first()
         if existing:
-            return {"call_id": call_id, "organization_id": existing.organization_id,
-                    "contact_id": existing.contact_id, "existing": True}
+            from services.dashboard.app.models.crm import Organization
+            existing_org = db.query(Organization).filter(Organization.id == existing.organization_id).first() if existing.organization_id else None
+            return {
+                "call_id": call_id,
+                "organization_id": existing.organization_id,
+                "organization_slug": existing_org.slug if existing_org else None,
+                "contact_id": existing.contact_id,
+                "resolved_by": "existing_session",
+                "existing": True,
+            }
 
         inbound = direction != "outbound"
         org, how = resolve_organization(db, to_number if inbound else from_number)

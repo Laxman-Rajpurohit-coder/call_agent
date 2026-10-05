@@ -326,9 +326,27 @@ def generate_tts_and_resample(text: str, enqueue_time: float, requested_voice: s
 
     print(f"[TTS STEP 1: PARSE & CONFIG] Text: \"{clean_text[:40]}...\" | Voice Profile: {voice} | Speed: {speed}x | Gain: {volume_gain_db}dB", flush=True)
 
-    # ⚡ 1. PRIMARY ULTRA-FAST DEEPGRAM AURA NEURAL TTS (~200ms LATENCY)
+    # 1. PRIMARY: CARTESIA NEURAL TTS
+    cartesia_api_key = os.environ.get("CARTESIA_API_KEY", "")
+    is_hindi = bool(re.search(r'[\u0900-\u097F]', clean_text))
+    
+    # Use Cartesia if explicitly requested OR if the text is Hindi/Marwadi (since Deepgram Aura doesn't support it)
+    if not audio_bytes and clean_text and ("cartesia" in voice.lower() or is_hindi) and cartesia_api_key:
+        try:
+            from path_c_hybrid_agent.tts_cartesia import synthesize_speech
+            import asyncio as _asyncio
+            # Use Hindi/Indian accent by default for Hindi text, or fallback to the provided voice ID
+            if "cartesia_hi_sonic" in voice.lower() or is_hindi:
+                vid = "ffa0d297-8cf9-4ec9-8e4e-99a59e939b02" 
+            else:
+                vid = voice if len(voice) == 36 else "ffa0d297-8cf9-4ec9-8e4e-99a59e939b02"
+            audio_bytes = _asyncio.run(synthesize_speech(clean_text, voice_id=vid))
+        except Exception as c_err:
+            print(f"[TTS Worker] Cartesia synthesis notice ({voice}): {c_err}", flush=True)
+
+    # 2. FALLBACK/ENGLISH: DEEPGRAM AURA NEURAL TTS (~200ms LATENCY)
     deepgram_key = os.environ.get("DEEPGRAM_API_KEY", "")
-    if deepgram_key and clean_text:
+    if not audio_bytes and deepgram_key and clean_text and not is_hindi:
         try:
             import httpx
             url = "https://api.deepgram.com/v1/speak?model=aura-asteria-en&encoding=linear16&sample_rate=8000"
@@ -343,67 +361,6 @@ def generate_tts_and_resample(text: str, enqueue_time: float, requested_voice: s
                 audio_bytes = raw_pcm
         except Exception as dg_err:
             print(f"[TTS Worker] Deepgram Aura notice: {dg_err}", flush=True)
-
-    # 2. Kokoro-82M Neural Engine (Fallback)
-    if not audio_bytes and _kokoro_engine and _kokoro_engine.kokoro and clean_text:
-        try:
-            audio_bytes = _kokoro_engine.synthesize_telephony_8k(clean_text, voice=voice, speed=speed)
-            if audio_bytes and volume_gain_db != 0.0:
-                samples = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32)
-                samples = samples * (10.0 ** (volume_gain_db / 20.0))
-                samples = np.clip(samples, -32767.0, 32767.0).astype(np.int16)
-                audio_bytes = samples.tobytes()
-        except Exception as k_err:
-            print(f"[TTS Worker] Kokoro synthesis notice ({voice}): {k_err}", flush=True)
-            audio_bytes = b""
-
-    # 2. On-Premise Piper Fallback
-    if not audio_bytes and clean_text:
-        piper_instance = (_piper_hi if voice.startswith("hi_") or re.search(r'[\u0900-\u097F]', clean_text) else _piper_en)
-        if not piper_instance:
-            piper_instance = _piper_en or _piper_hi
-        if piper_instance:
-            try:
-                pcm_22k = piper_instance.synthesize(clean_text)
-                if pcm_22k:
-                    samples = np.frombuffer(pcm_22k, dtype=np.int16).astype(np.float32)
-                    resampled = resample_poly(samples, 160, 441)
-                    if volume_gain_db != 0.0:
-                        resampled = resampled * (10.0 ** (volume_gain_db / 20.0))
-                    resampled = np.clip(resampled, -32767.0, 32767.0)
-                    fade_len = int((fade_in_ms / 1000.0) * 8000)
-                    if fade_len > 0 and len(resampled) > fade_len:
-                        resampled[:fade_len] *= np.linspace(0.0, 1.0, fade_len)
-                    audio_bytes = resampled.astype(np.int16).tobytes()
-            except Exception as p_err:
-                print(f"[TTS Worker] Piper fallback error: {p_err}", flush=True)
-
-    # 4. Fail-Safe EdgeTTS Cloud Neural Fallback (Guarantees Audio Generation)
-    if not audio_bytes and clean_text:
-        try:
-            import edge_tts
-            import io
-            from pydub import AudioSegment
-
-            is_hindi = bool(re.search(r'[\u0900-\u097F]', clean_text))
-            edge_voice = "hi-IN-SwaraNeural" if is_hindi else "en-US-AvaNeural"
-            
-            async def run_edge():
-                c = edge_tts.Communicate(clean_text, edge_voice)
-                mp3_b = bytearray()
-                async for chunk in c.stream():
-                    if chunk["type"] == "audio":
-                        mp3_b.extend(chunk["data"])
-                return bytes(mp3_b)
-
-            mp3_data = asyncio.run(run_edge())
-            if mp3_data:
-                audio_seg = AudioSegment.from_file(io.BytesIO(mp3_data), format="mp3")
-                audio_seg = audio_seg.set_frame_rate(8000).set_channels(1).set_sample_width(2)
-                audio_bytes = audio_seg.raw_data
-                print(f"[TTS Worker] EdgeTTS Fallback produced {len(audio_bytes)} bytes PCM!", flush=True)
-        except Exception as edge_err:
-            print(f"[TTS Worker] EdgeTTS fallback error: {edge_err}", flush=True)
 
     inference_ms = (time.perf_counter() - t_infer) * 1000.0
     print(f"[TTS STEP 2: NEURAL SYNTHESIS COMPLETE] Inference Time: {inference_ms:.1f}ms | Produced: {len(audio_bytes)} bytes (8000Hz PCM16 Mono)", flush=True)

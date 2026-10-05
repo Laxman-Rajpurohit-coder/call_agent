@@ -331,6 +331,8 @@ export const LiveMonitorPage: React.FC<LiveMonitorPageProps> = ({
                   className="w-full px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 font-medium focus:outline-none focus:border-brand-500"
                 >
                   <option value="cartesia_hi_sonic">Cartesia Hindi Sonic (Ultra Fast ~120ms)</option>
+                  <option value="edge_hi-IN-MadhurNeural">EdgeTTS Hindi Madhur (Male)</option>
+                  <option value="edge_mr-IN-AarohiNeural">EdgeTTS Marathi/Marwadi (Female)</option>
                   <option value="deepgram_aura_asteria">Deepgram Aura Asteria (Zero-Latency ~100ms)</option>
                   <option value="openai_alloy">OpenAI Alloy (Natural English)</option>
                   <option value="hi_pratham">Kokoro Hindi Pratham</option>

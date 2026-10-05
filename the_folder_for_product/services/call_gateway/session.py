@@ -38,7 +38,7 @@ logger = logging.getLogger("call_gateway.session")
 # observed); 3.0 s covers scheduling spikes.
 STT_TIMEOUT_S = 8.0
 LLM_TIMEOUT_S = 8.5
-TTS_TIMEOUT_S = 6.0
+TTS_TIMEOUT_S = 12.0
 
 
 class CallFailedError(Exception):
@@ -160,20 +160,43 @@ class CallSessionHandler:
         escalation = classify(stt_result.text, stt_result.confidence)
 
         if escalation == EscalationLevel.LOW:
-            await self._request_handoff("low confidence / sensitive request")
-            return
+            from shared.ami import AMIRegistry
+            if AMIRegistry.client and AMIRegistry.client.is_connected:
+                try:
+                    await self._request_handoff("user requested human agent")
+                    return
+                except Exception as ex:
+                    logger.warning("call_id=%s Handoff failed (%s), continuing with LLM turn", self.session.call_id, ex)
+            else:
+                logger.info("call_id=%s Human handoff requested but AMI client not connected (Vobiz direct call). Continuing with LLM turn.", self.session.call_id)
 
         if cancel_event and cancel_event.is_set():
             return
 
         self._set_state(CallState.PROCESSING_LLM)
         logger.info("LLM_START call_id=%s transcript='%s'", self.session.call_id, stt_result.text)
+
+        active_system_prompt = self.session.system_prompt
+        if active_system_prompt and active_system_prompt.startswith("SCRIPT_MODE:"):
+            script_text = active_system_prompt[12:].strip()
+            active_system_prompt = (
+                f"You are an automated phone representative making an OUTBOUND call.\n"
+                f"You called the recipient and recited this script:\n\"{script_text[:1000]}\"\n\n"
+                f"The recipient just responded: \"{stt_result.text}\".\n\n"
+                f"STRICT INSTRUCTIONS:\n"
+                f"1. NEVER say 'Thank you for calling' or 'How can I help you today' (this is an outbound call; you called them).\n"
+                f"2. Answer their question or remark politely, accurately, and concisely in ONE single sentence (under 14 words) in their language based on the script.\n"
+                f"3. If they say hello, acknowledge and state the main purpose of the call based on the script.\n"
+                f"4. If they agree or say OK, thank them for their time and conclude politely."
+            )
+
         payload = {
             "job": {
                 "call_id": self.session.call_id,
                 "tenant_id": self.session.tenant_id,
                 "transcript": stt_result.text,
                 "conversation_history": history_before_turn,
+                "system_prompt": active_system_prompt,
             },
             "escalation": escalation.value if hasattr(escalation, "value") else str(escalation),
         }
@@ -226,14 +249,19 @@ class CallSessionHandler:
                                 full_reply_text = data.get("full_text", "")
                                 llm_total_ms = (time.perf_counter() - t_llm_start) * 1000.0
                                 logger.info("LLM_END call_id=%s full_text='%s' total_ms=%.1f", self.session.call_id, full_reply_text, llm_total_ms)
+                                if full_reply_text and not any(msg.get("content") == full_reply_text for msg in self.conversation_history):
+                                    self._record_turn("assistant", full_reply_text)
                     else:
-                        logger.error("LLM stream failed with status %d", response.status_code)
-                        tts_result = await self._run_tts("I encountered an issue processing your request.")
+                        is_hi = (getattr(self.session, "primary_language", None) in ('hi', 'marwadi'))
+                        err_text = "माफ़ कीजिएगा, मुझे आपकी बात समझने में थोड़ी परेशानी हुई।" if is_hi else "I encountered an issue processing your request."
+                        tts_result = await self._run_tts(err_text)
                         if tts_result and tts_result.audio_pcm16_8k and not (cancel_event and cancel_event.is_set()):
                             self._set_state(CallState.AI_SPEAKING)
                             pcm = tts_result.audio_pcm16_8k
                             for i in range(0, len(pcm), 320):
                                 playback_queue.put_nowait(pcm[i:i+320])
+                            if not any(msg.get("content") == err_text for msg in self.conversation_history):
+                                self._record_turn("assistant", err_text)
             except asyncio.CancelledError:
                 raise
             except Exception as e:
@@ -255,15 +283,15 @@ class CallSessionHandler:
                 except Exception:
                     break
             self._set_state(CallState.LISTENING)
-            # Interrupted (barge-in): keep what the AI actually managed to say, so the transcript stays truthful
-            self._record_turn("assistant", " ".join(spoken_parts))
+            # Interrupted (barge-in): ensure turn is recorded if not already
+            interrupted_text = " ".join(spoken_parts)
+            if interrupted_text and not any(msg.get("content") in (interrupted_text, full_reply_text) for msg in self.conversation_history):
+                self._record_turn("assistant", interrupted_text)
             raise
 
-        if cancel_event and cancel_event.is_set():
-            # Caller interrupted playback: only the sentences that were queued count as said
-            self._record_turn("assistant", " ".join(spoken_parts))
-        else:
-            self._record_turn("assistant", full_reply_text or " ".join(spoken_parts))
+        final_text = full_reply_text or " ".join(spoken_parts)
+        if final_text and not any(msg.get("content") == final_text for msg in self.conversation_history):
+            self._record_turn("assistant", final_text)
 
     async def handle_utterance(self, audio_pcm16_8k: bytes) -> Optional[bytes]:
         """One full turn: audio in -> STT -> LLM -> TTS -> audio out.
@@ -286,8 +314,15 @@ class CallSessionHandler:
         escalation = classify(stt_result.text, stt_result.confidence)
 
         if escalation == EscalationLevel.LOW:
-            await self._request_handoff("low confidence / sensitive request")
-            return None
+            from shared.ami import AMIRegistry
+            if AMIRegistry.client and AMIRegistry.client.is_connected:
+                try:
+                    await self._request_handoff("user requested human agent")
+                    return None
+                except Exception as ex:
+                    logger.warning("call_id=%s Handoff failed (%s), continuing with LLM", self.session.call_id, ex)
+            else:
+                logger.info("call_id=%s Human handoff requested but AMI not connected. Continuing with LLM.", self.session.call_id)
 
         self._set_state(CallState.PROCESSING_LLM)
         llm_result = await self._run_llm(stt_result.text, escalation)
@@ -306,6 +341,7 @@ class CallSessionHandler:
             call_id=self.session.call_id,
             tenant_id=self.session.tenant_id,
             audio_pcm16_8k=audio,
+            primary_language=self.session.primary_language,
         )
         try:
             await self.stt_queue.put(job)
@@ -330,6 +366,7 @@ class CallSessionHandler:
             tenant_id=self.session.tenant_id,
             transcript=transcript,
             conversation_history=self.conversation_history,
+            system_prompt=self.session.system_prompt,
             escalation=escalation,
         )
         try:
@@ -354,6 +391,7 @@ class CallSessionHandler:
             call_id=self.session.call_id,
             tenant_id=self.session.tenant_id,
             text=text,
+            voice_id=self.session.voice_model or "cartesia_hi_sonic",
         )
         try:
             await self.tts_queue.put(job)

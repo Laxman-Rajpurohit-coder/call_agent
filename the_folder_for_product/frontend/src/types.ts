@@ -16,17 +16,80 @@ export interface SystemOverview {
   services: ServiceHealth[];
 }
 
+export interface ContactAIProfile {
+  summary?: string;
+  sentiment?: 'positive' | 'neutral' | 'skeptical' | 'negative' | 'urgent' | string;
+  intent_score?: number;
+  open_issue?: string;
+  next_action?: string;
+  generated_at?: string;
+  model?: string;
+}
+
+export interface ContactTimelineEvent {
+  id: string;
+  type: 'call' | 'note' | 'reminder' | 'message';
+  timestamp: string;
+  title: string;
+  direction?: 'inbound' | 'outbound';
+  status?: string;
+  duration_s?: number;
+  recording_url?: string;
+  transcript?: { role: string; content: string; wav_file?: string; audio_dur_s?: number }[];
+  ai_summary?: string;
+  intent_detected?: string;
+  sentiment?: string;
+  handler?: {
+    type: 'ai' | 'human_transfer' | string;
+    name: string;
+    agent_id?: string;
+    reason?: string;
+    transferred?: boolean;
+  };
+  caller_number?: string;
+  callee_number?: string;
+  content?: string;
+  disposition?: string;
+  author?: string;
+  agent_id?: string;
+  remind_at?: string;
+  is_triggered?: boolean;
+}
+
+export interface ContactTimelineData {
+  contact_id: string;
+  name: string;
+  phone_number: string;
+  company?: string;
+  status: string;
+  tags: string[];
+  ai_profile?: ContactAIProfile;
+  stats: {
+    total_calls: number;
+    total_duration_s: number;
+    total_notes: number;
+    last_contacted_at?: string;
+  };
+  timeline: ContactTimelineEvent[];
+}
+
 export interface Contact {
   id: string;
   organization_id: string;
   phone_number: string;
   name?: string;
   email?: string;
+  company?: string;
   status: string;
+  tags?: string[];
   preferred_language: string;
   lead_source?: string;
   lead_owner_id?: string;
   lead_owner_name?: string;
+  is_archived?: boolean;
+  is_blocked?: boolean;
+  ai_profile?: ContactAIProfile;
+  merged_into_id?: string;
   custom_fields?: Record<string, any>;
   last_called_at?: string;
   created_at: string;

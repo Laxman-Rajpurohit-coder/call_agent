@@ -1,7 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Users, PhoneCall, Search, FileText, ChevronRight, Upload, Phone, Clock, Play, X, CheckCircle, AlertCircle, RefreshCw, Copy, Download, Check, ShieldCheck, Activity } from 'lucide-react';
+import {
+  Users, PhoneCall, Search, FileText, ChevronRight, Upload, Phone, Clock,
+  Play, X, CheckCircle, AlertCircle, RefreshCw, Copy, Download, Check,
+  ShieldCheck, Activity, UserPlus, MessageSquare, ExternalLink, Filter,
+  Sparkles, Building, CornerDownRight, Tag, PhoneOff
+} from 'lucide-react';
 import { CallSession, Contact } from '../types';
 import { IncomingCallCard, HandoffOffer } from '../components/IncomingCallCard';
+import { Contact360Drawer } from '../components/Contact360Drawer';
+import { AddContactModal } from '../components/AddContactModal';
 
 interface CRMPageProps {
   calls: CallSession[];
@@ -20,21 +27,54 @@ export const CRMPage: React.FC<CRMPageProps> = ({ calls, contacts, onImportCSV, 
   const [copySuccess, setCopySuccess] = useState(false);
   const [activeTab, setActiveTab] = useState<'calls' | 'contacts'>('calls');
 
+  // Contact 360 & Diary States
+  const [drawerContactId, setDrawerContactId] = useState<string | null>(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [contactFilterTab, setContactFilterTab] = useState<'all' | 'leads' | 'customers' | 'followup' | 'unassigned' | 'archived'>('all');
+  const [selectedTagFilter, setSelectedTagFilter] = useState<string | null>(null);
+
   // Agent Presence & Real-Time Call Handoff States
-  const [agentId, setAgentId] = useState<string>('agent-101');
+  const [agentId, setAgentId] = useState<string>('12e3f07a-5f24-4c6c-b481-a97a81868c52');
   const [presenceStatus, setPresenceStatus] = useState<string>('AVAILABLE');
   const [incomingOffer, setIncomingOffer] = useState<HandoffOffer | null>(null);
   const [handoffToast, setHandoffToast] = useState<string | null>(null);
 
+  // Sync real agent from team members on mount
+  useEffect(() => {
+    const initAgent = async () => {
+      try {
+        const res = await fetch('/api/v1/team/stats');
+        if (res.ok) {
+          const text = await res.text();
+          const list = text ? JSON.parse(text) : [];
+          if (Array.isArray(list) && list.length > 0) {
+            const agent = list.find((a: any) => a.is_active) || list[0];
+            setAgentId(agent.id);
+          }
+        }
+      } catch (e) {}
+    };
+    initAgent();
+  }, []);
+
   // 10s Heartbeat Loop
   useEffect(() => {
+    if (!agentId) return;
     const sendHeartbeat = async () => {
       try {
-        await fetch('/api/v1/team/heartbeat', {
+        const res = await fetch('/api/v1/team/heartbeat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ agent_id: agentId, device_status: 'REGISTERED' })
         });
+        if (res.ok) {
+          const text = await res.text();
+          const data = text ? JSON.parse(text) : null;
+          if (data && data.presence_status) {
+            setPresenceStatus(data.presence_status);
+          }
+        }
       } catch (err) {
         console.warn('Agent heartbeat failed:', err);
       }
@@ -66,7 +106,8 @@ export const CRMPage: React.FC<CRMPageProps> = ({ calls, contacts, onImportCSV, 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ call_session_id: callId, agent_id: agentId, idempotency_key: `accept_${callId}_${agentId}` })
       });
-      const data = await res.json();
+      const text = await res.text();
+      const data = text ? JSON.parse(text) : {};
       if (res.ok) {
         setIncomingOffer(null);
         setPresenceStatus('BUSY');
@@ -142,6 +183,8 @@ STRICT TELEPHONY RULE: Output ONLY 1-2 spoken response sentences. Never output i
   const [dialPrompt, setDialPrompt] = useState(() => localStorage.getItem('superfone_manual_prompt') || DEFAULT_AI_PROMPT);
   const [dialStatus, setDialStatus] = useState<string | null>(null);
   const [isDialing, setIsDialing] = useState(false);
+  const [activeDialCallId, setActiveDialCallId] = useState<string | null>(null);
+  const [isEndingCall, setIsEndingCall] = useState(false);
 
   const handleScriptChange = (val: string) => {
     setDialScript(val);
@@ -159,10 +202,34 @@ STRICT TELEPHONY RULE: Output ONLY 1-2 spoken response sentences. Never output i
     c.status.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const filteredContacts = contacts.filter(c =>
-    c.phone_number.includes(searchTerm) ||
-    (c.name && c.name.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  const filteredContacts = contacts.filter(c => {
+    // 1. Text search across phone, name, email, company, tags
+    const searchLower = searchTerm.toLowerCase();
+    const matchesSearch = !searchTerm || (
+      c.phone_number.includes(searchTerm) ||
+      (c.name && c.name.toLowerCase().includes(searchLower)) ||
+      (c.email && c.email.toLowerCase().includes(searchLower)) ||
+      (c.company && c.company.toLowerCase().includes(searchLower)) ||
+      (c.tags && c.tags.some(t => t.toLowerCase().includes(searchLower)))
+    );
+    if (!matchesSearch) return false;
+
+    // 2. Tab filter
+    const statusLower = (c.status || '').toLowerCase();
+    if (contactFilterTab === 'leads' && statusLower !== 'lead') return false;
+    if (contactFilterTab === 'customers' && statusLower !== 'customer') return false;
+    if (contactFilterTab === 'followup' && !(statusLower.includes('callback') || statusLower.includes('follow') || (c.tags && c.tags.some(t => t.toUpperCase() === 'FOLLOW-UP')))) return false;
+    if (contactFilterTab === 'unassigned' && c.lead_owner_id) return false;
+    if (contactFilterTab === 'archived' && !c.is_archived) return false;
+    if (contactFilterTab !== 'archived' && c.is_archived) return false;
+
+    // 3. Tag filter
+    if (selectedTagFilter && (!c.tags || !c.tags.some(t => t.toUpperCase() === selectedTagFilter.toUpperCase()))) {
+      return false;
+    }
+
+    return true;
+  });
 
   // Fetch full calling records for a selected contact
   const handleSelectContact = async (contact: Contact) => {
@@ -171,7 +238,8 @@ STRICT TELEPHONY RULE: Output ONLY 1-2 spoken response sentences. Never output i
     try {
       const res = await fetch(`/api/v1/contacts/${contact.id}/history`);
       if (res.ok) {
-        const data = await res.json();
+        const text = await res.text();
+        const data = text ? JSON.parse(text) : {};
         setContactHistory(data.calls || []);
       } else {
         const localHistory = calls.filter(
@@ -207,25 +275,31 @@ STRICT TELEPHONY RULE: Output ONLY 1-2 spoken response sentences. Never output i
     setDialStatus("Initiating direct softphone call...");
     try {
       if (dialRoute === 'sim') {
-        setDialStatus("📞 EXOTEL DIALING... Calling phone via Exotel API!");
+        setDialStatus("📞 DIALING... Calling phone via Vobiz Outbound API!");
         const resp = await fetch('/api/telephony/outbound-call', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             to: dialPhone.trim(),
             contact_name: dialName.trim() || undefined,
+            provider: 'vobiz',
+            call_mode: dialMode,
+            voice_model: dialVoice,
+            dial_mode: dialRoute,
             script_content: dialMode === 'SCRIPT' ? dialScript : '',
             system_prompt: dialMode === 'INTERACTIVE_AI' ? dialPrompt : ''
           })
         });
 
         if (resp.ok) {
-          setDialStatus(`📞 EXOTEL DIALING! Ringing ${dialPhone.trim()} on cellular SIM network...`);
+          const data = await resp.json().catch(() => ({}));
+          if (data.call_id) setActiveDialCallId(data.call_id);
+          setDialStatus(`📞 CALL CONNECTING! Ringing ${dialPhone.trim()} on mobile network via Vobiz...`);
           if (onRefreshData) onRefreshData();
           setTimeout(() => { if (onRefreshData) onRefreshData(); }, 1500);
         } else {
           const err = await resp.json().catch(() => ({}));
-          setDialStatus(`❌ Exotel Call Failed: ${err.error || err.detail || 'Server error'}`);
+          setDialStatus(`❌ Vobiz Call Failed: ${err.error || err.detail || 'Server error'}`);
         }
       } else {
         const resp = await fetch('/api/v1/calls/manual-dial', {
@@ -244,6 +318,7 @@ STRICT TELEPHONY RULE: Output ONLY 1-2 spoken response sentences. Never output i
 
         if (resp.ok) {
           const data = await resp.json();
+          if (data.call_id) setActiveDialCallId(data.call_id);
           setDialStatus(`📲 CALLING MICROSIP! ${data.message || 'Ringing on desktop...'}`);
           if (onRefreshData) onRefreshData();
           setTimeout(() => { if (onRefreshData) onRefreshData(); }, 1500);
@@ -257,6 +332,25 @@ STRICT TELEPHONY RULE: Output ONLY 1-2 spoken response sentences. Never output i
       setDialStatus(`❌ Error initiating call: ${ex.message}`);
     } finally {
       setIsDialing(false);
+    }
+  };
+
+  const handleHangupManualCall = async () => {
+    if (!activeDialCallId) return;
+    setIsEndingCall(true);
+    try {
+      const resp = await fetch(`/api/v1/calls/${activeDialCallId}/hangup`, { method: 'POST' });
+      if (resp.ok) {
+        setDialStatus("🛑 Call disconnected successfully.");
+        setActiveDialCallId(null);
+        if (onRefreshData) onRefreshData();
+      } else {
+        setDialStatus("❌ Failed to disconnect call session.");
+      }
+    } catch (e: any) {
+      setDialStatus(`❌ Hangup error: ${e.message}`);
+    } finally {
+      setIsEndingCall(false);
     }
   };
 
@@ -621,173 +715,227 @@ STRICT TELEPHONY RULE: Output ONLY 1-2 spoken response sentences. Never output i
 
         </div>
       ) : (
-        /* Contacts Directory & Full Call History Inspector */
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Contacts Table */}
-          <div className="lg:col-span-2 glass-panel p-4 md:p-5 rounded-2xl border border-slate-800 overflow-hidden space-y-3">
-            <div className="sm:hidden flex items-center justify-between text-[11px] text-slate-400 bg-slate-900/60 px-3 py-1.5 rounded-lg border border-slate-800/80">
-              <span>↔ Swipe table horizontally for full directory</span>
-              <span className="font-semibold text-brand-400">{filteredContacts.length} contacts</span>
+        /* Action-Oriented Contacts Directory */
+        <div className="space-y-4">
+          {/* Sub-Tabs & Filter Toolbar */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-900/60 p-3 rounded-2xl border border-slate-800">
+            {/* Status Tabs */}
+            <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 md:pb-0 text-xs">
+              {[
+                { key: 'all', label: 'All Contacts', count: contacts.filter(c => !c.is_archived).length },
+                { key: 'leads', label: 'Leads', count: contacts.filter(c => !c.is_archived && (c.status || '').toLowerCase() === 'lead').length },
+                { key: 'customers', label: 'Customers', count: contacts.filter(c => !c.is_archived && (c.status || '').toLowerCase() === 'customer').length },
+                { key: 'followup', label: 'Follow-up Needed', count: contacts.filter(c => !c.is_archived && ((c.status || '').toLowerCase().includes('callback') || (c.status || '').toLowerCase().includes('follow') || (c.tags && c.tags.some(t => t.toUpperCase() === 'FOLLOW-UP')))).length },
+                { key: 'unassigned', label: 'Unassigned', count: contacts.filter(c => !c.is_archived && !c.lead_owner_id).length },
+                { key: 'archived', label: 'Archived', count: contacts.filter(c => c.is_archived).length }
+              ].map(tab => (
+                <button
+                  key={tab.key}
+                  onClick={() => setContactFilterTab(tab.key as any)}
+                  className={`px-3 py-1.5 rounded-xl font-medium whitespace-nowrap transition-all ${
+                    contactFilterTab === tab.key
+                      ? 'bg-brand-600 text-white shadow-md shadow-brand-600/20 font-semibold'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                  }`}
+                >
+                  <span>{tab.label}</span>
+                  <span className={`ml-1.5 px-1.5 py-0.2 rounded-full text-[10px] ${
+                    contactFilterTab === tab.key ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-500'
+                  }`}>
+                    {tab.count}
+                  </span>
+                </button>
+              ))}
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[620px] text-left text-sm text-slate-300">
-                <thead className="text-xs text-slate-400 uppercase bg-slate-900/50 border-b border-slate-800">
-                  <tr>
-                    <th className="px-4 py-3 whitespace-nowrap">Name</th>
-                    <th className="px-4 py-3 whitespace-nowrap">Phone Number</th>
-                    <th className="px-4 py-3 whitespace-nowrap">Status</th>
-                    <th className="px-4 py-3 whitespace-nowrap">Language</th>
-                    <th className="px-4 py-3 whitespace-nowrap">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/60">
-                  {filteredContacts.map((contact) => (
-                    <tr
-                      key={contact.id}
-                      onClick={() => handleSelectContact(contact)}
-                      className={`hover:bg-slate-800/40 cursor-pointer transition-colors ${selectedContact?.id === contact.id ? 'bg-brand-600/10' : ''}`}
-                    >
-                      <td className="px-4 py-3.5 font-medium text-slate-100 whitespace-nowrap">{contact.name || 'Unnamed Lead'}</td>
-                      <td className="px-4 py-3.5 font-mono text-slate-300 whitespace-nowrap">{contact.phone_number}</td>
-                      <td className="px-4 py-3.5 whitespace-nowrap">
-                        <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-brand-500/10 text-brand-400 border border-brand-500/20">
-                          {contact.status}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3.5 text-xs text-slate-400 uppercase whitespace-nowrap">{contact.preferred_language}</td>
-                      <td className="px-4 py-3.5 whitespace-nowrap">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openManualDialer(contact.phone_number, contact.name || '');
-                          }}
-                          className="px-2.5 py-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-400 border border-emerald-500/30 text-xs font-semibold flex items-center space-x-1 transition-all"
-                        >
-                          <PhoneCall className="w-3 h-3" />
-                          <span>Call</span>
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            {/* Right Action: Add Contact */}
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setIsAddModalOpen(true)}
+                className="px-3.5 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold flex items-center space-x-1.5 shadow-md shadow-brand-600/20 transition-all ml-auto"
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                <span>+ Add Contact</span>
+              </button>
             </div>
           </div>
 
-          {/* Contact Complete Call History Inspector Panel */}
-          <div className="glass-panel p-5 rounded-2xl border border-slate-800 space-y-4">
-            <h3 className="text-sm font-semibold text-slate-200 flex items-center justify-between border-b border-slate-800 pb-3">
-              <span className="flex items-center space-x-2">
-                <Clock className="w-4 h-4 text-emerald-400" />
-                <span>Contact Call Records</span>
-              </span>
-              {selectedContact && (
+          {/* Tag Filter Chips Bar */}
+          <div className="flex items-center space-x-2 text-xs overflow-x-auto pb-1">
+            <span className="text-slate-500 flex items-center space-x-1 text-[11px] font-medium whitespace-nowrap">
+              <Filter className="w-3 h-3" />
+              <span>Tag Filter:</span>
+            </span>
+            <button
+              onClick={() => setSelectedTagFilter(null)}
+              className={`px-2.5 py-0.5 rounded-lg text-[11px] font-medium transition-all ${
+                selectedTagFilter === null
+                  ? 'bg-slate-700 text-white font-bold'
+                  : 'text-slate-400 hover:text-slate-200 bg-slate-900 border border-slate-800'
+              }`}
+            >
+              All Tags
+            </button>
+            {['VIP', 'HOT LEAD', 'FOLLOW-UP', 'INTERESTED', 'NOT INTERESTED'].map(tag => {
+              const isSelected = selectedTagFilter === tag;
+              return (
                 <button
-                  onClick={() => openManualDialer(selectedContact.phone_number, selectedContact.name || '')}
-                  className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs flex items-center space-x-1"
+                  key={tag}
+                  onClick={() => setSelectedTagFilter(isSelected ? null : tag)}
+                  className={`px-2.5 py-0.5 rounded-lg text-[11px] font-medium transition-all ${
+                    isSelected
+                      ? 'bg-brand-600 text-white font-bold shadow-sm shadow-brand-600/30'
+                      : 'text-slate-400 hover:text-slate-200 bg-slate-900 border border-slate-800'
+                  }`}
                 >
-                  <PhoneCall className="w-3 h-3" />
-                  <span>Call Manually</span>
+                  {tag}
                 </button>
-              )}
-            </h3>
+              );
+            })}
+          </div>
 
-            {selectedContact ? (
-              <div className="space-y-4 text-xs">
-                <div className="glass-card p-3 rounded-xl border border-slate-800 space-y-1">
-                  <div className="font-bold text-sm text-slate-100">{selectedContact.name || 'Unnamed Lead'}</div>
-                  <div className="text-slate-400 font-mono">{selectedContact.phone_number}</div>
-                  <div className="flex items-center space-x-2 text-[11px] text-slate-500 mt-1">
-                    <span>Language: {selectedContact.preferred_language.toUpperCase()}</span>
-                    <span>•</span>
-                    <span>Status: {selectedContact.status}</span>
-                  </div>
-                  {selectedContact.lead_source && (
-                    <div className="mt-2 flex items-center gap-2">
-                      <span className="px-2 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded text-[10px] font-semibold">
-                        Source: {selectedContact.lead_source}
-                      </span>
-                      <span className="px-2 py-0.5 bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 rounded text-[10px] font-semibold">
-                        Owner: {selectedContact.lead_owner_name || 'Round Robin'}
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Schedule Follow-up Reminder Box (Demoed in Superfone Video) */}
-                <div className="p-3 bg-slate-950/70 border border-slate-800 rounded-xl space-y-2">
-                  <div className="text-[11px] font-semibold text-slate-300 uppercase tracking-wider flex items-center justify-between">
-                    <span className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5 text-amber-400" /> Schedule Follow-up Alert</span>
-                    {reminderSuccess && <span className="text-emerald-400 text-[10px]">Saved!</span>}
-                  </div>
-                  <input
-                    type="text"
-                    placeholder="e.g. Call back after 2 hours regarding property details..."
-                    value={reminderNote}
-                    onChange={e => setReminderNote(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-750 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500/50"
-                  />
-                  <div className="flex items-center gap-2">
-                    {[15, 60, 120, 240].map(mins => (
-                      <button
-                        key={mins}
-                        onClick={() => setReminderMins(mins)}
-                        className={`px-2 py-1 rounded text-[10px] font-semibold transition-colors ${reminderMins === mins ? 'bg-amber-500/30 text-amber-300 border border-amber-500/40' : 'bg-slate-800 text-slate-400'}`}
+          {/* Contacts Table */}
+          <div className="glass-panel p-4 md:p-5 rounded-2xl border border-slate-800 overflow-hidden space-y-3">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[760px] text-left text-sm text-slate-300">
+                <thead className="text-xs text-slate-400 uppercase bg-slate-900/50 border-b border-slate-800">
+                  <tr>
+                    <th className="px-4 py-3 whitespace-nowrap">Contact & Company</th>
+                    <th className="px-4 py-3 whitespace-nowrap">Phone & Email</th>
+                    <th className="px-4 py-3 whitespace-nowrap">Status</th>
+                    <th className="px-4 py-3 whitespace-nowrap">Tags</th>
+                    <th className="px-4 py-3 whitespace-nowrap">Owner</th>
+                    <th className="px-4 py-3 whitespace-nowrap text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60">
+                  {filteredContacts.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="text-center py-12 text-slate-500 italic text-xs">
+                        No contacts found matching the active filters or search term.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredContacts.map((contact) => (
+                      <tr
+                        key={contact.id}
+                        onClick={() => {
+                          setDrawerContactId(contact.id);
+                          setIsDrawerOpen(true);
+                        }}
+                        className="hover:bg-slate-800/40 cursor-pointer transition-colors group"
                       >
-                        +{mins >= 60 ? `${mins/60}h` : `${mins}m`}
-                      </button>
-                    ))}
-                    <button
-                      onClick={handleScheduleReminder}
-                      className="ml-auto px-3 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded text-xs font-bold transition-colors"
-                    >
-                      Set Alert
-                    </button>
-                  </div>
-                </div>
-
-                <div>
-                  <h4 className="font-semibold text-slate-300 mb-2 flex items-center justify-between">
-                    <span>Calling Records ({contactHistory.length})</span>
-                    {loadingHistory && <RefreshCw className="w-3 h-3 animate-spin text-brand-400" />}
-                  </h4>
-
-                  {contactHistory.length > 0 ? (
-                    <div className="space-y-3 max-h-[400px] overflow-y-auto pr-1">
-                      {contactHistory.map((call, idx) => (
-                        <div key={call.id || idx} className="p-3 rounded-xl border border-slate-800 bg-slate-900/60 space-y-2">
-                          <div className="flex items-center justify-between text-slate-300 font-medium">
-                            <span className="text-emerald-400 font-semibold">{call.status}</span>
-                            <span className="font-mono text-[11px] text-slate-400">{call.duration_s}s</span>
+                        {/* Name & Company */}
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                          <div className="font-semibold text-slate-100 group-hover:text-brand-300 transition-colors">
+                            {contact.name || 'Unnamed Contact'}
                           </div>
-                          <div className="text-[11px] text-slate-500">{call.created_at}</div>
-
-                          {call.transcript && call.transcript.length > 0 && (
-                            <div className="mt-2 space-y-1 border-t border-slate-800/80 pt-2">
-                              <div className="text-[10px] text-slate-400 font-semibold">Transcript Turns:</div>
-                              {call.transcript.map((t, ti) => (
-                                <div key={ti} className="text-[11px] text-slate-300">
-                                  <span className="font-bold text-brand-400">{t.role}:</span> {t.content}
-                                </div>
-                              ))}
+                          {contact.company && (
+                            <div className="text-xs text-slate-400 flex items-center space-x-1 mt-0.5">
+                              <Building className="w-3 h-3 text-slate-500" />
+                              <span>{contact.company}</span>
                             </div>
                           )}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="p-6 text-center text-slate-500 italic border border-dashed border-slate-800 rounded-xl">
-                      No call records found for this contact yet.
-                    </div>
+                        </td>
+
+                        {/* Phone & Email */}
+                        <td className="px-4 py-3.5 whitespace-nowrap font-mono text-xs">
+                          <div className="text-slate-200 flex items-center space-x-1.5">
+                            <span>{contact.phone_number}</span>
+                          </div>
+                          {contact.email && (
+                            <div className="text-slate-500 font-sans text-[11px] truncate max-w-[160px]">
+                              {contact.email}
+                            </div>
+                          )}
+                        </td>
+
+                        {/* Lifecycle Status */}
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                          <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
+                            (contact.status || '').toLowerCase() === 'customer'
+                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                              : (contact.status || '').toLowerCase().includes('callback') || (contact.status || '').toLowerCase().includes('follow')
+                              ? 'bg-amber-500/10 text-amber-300 border-amber-500/20'
+                              : 'bg-brand-500/10 text-brand-400 border-brand-500/20'
+                          }`}>
+                            {contact.status}
+                          </span>
+                        </td>
+
+                        {/* Tags */}
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                          <div className="flex flex-wrap gap-1 max-w-[200px]">
+                            {contact.tags && contact.tags.length > 0 ? (
+                              contact.tags.map((t, idx) => (
+                                <span
+                                  key={idx}
+                                  className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                                    t.toUpperCase() === 'VIP'
+                                      ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                                      : t.toUpperCase() === 'HOT LEAD'
+                                      ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                                      : t.toUpperCase() === 'FOLLOW-UP'
+                                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                      : 'bg-slate-800 text-slate-300 border border-slate-700'
+                                  }`}
+                                >
+                                  {t}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-slate-600 text-[11px] italic">—</span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Owner / Agent */}
+                        <td className="px-4 py-3.5 whitespace-nowrap text-xs text-slate-400">
+                          {contact.lead_owner_name || (contact.lead_owner_id ? contact.lead_owner_id : (
+                            <span className="text-slate-500 italic">Unassigned</span>
+                          ))}
+                        </td>
+
+                        {/* Quick Actions */}
+                        <td className="px-4 py-3.5 whitespace-nowrap text-right space-x-1.5" onClick={e => e.stopPropagation()}>
+                          <button
+                            onClick={() => openManualDialer(contact.phone_number, contact.name || '')}
+                            className="px-2.5 py-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-400 border border-emerald-500/30 text-xs font-semibold inline-flex items-center space-x-1 transition-all"
+                            title="Call Contact"
+                          >
+                            <PhoneCall className="w-3 h-3" />
+                            <span>Call</span>
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              const cleanPhone = contact.phone_number.replace(/\+/g, '');
+                              window.open(`https://wa.me/${cleanPhone}`, '_blank');
+                            }}
+                            className="px-2 py-1 rounded-lg bg-teal-600/20 hover:bg-teal-600/30 text-teal-300 border border-teal-500/30 text-xs font-semibold inline-flex items-center space-x-1 transition-all"
+                            title="Open WhatsApp"
+                          >
+                            <MessageSquare className="w-3 h-3" />
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              setDrawerContactId(contact.id);
+                              setIsDrawerOpen(true);
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-semibold inline-flex items-center space-x-1 transition-all"
+                            title="View Contact 360"
+                          >
+                            <span>360</span>
+                            <ExternalLink className="w-3 h-3" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))
                   )}
-                </div>
-              </div>
-            ) : (
-              <div className="p-8 text-center text-slate-500 text-xs italic">
-                Select a contact from directory to view complete calling history & transcripts
-              </div>
-            )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
@@ -828,7 +976,7 @@ STRICT TELEPHONY RULE: Output ONLY 1-2 spoken response sentences. Never output i
                       onClick={() => { setDialPhone('8830718466'); setDialRoute('sim'); }}
                       className="px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 font-mono transition-colors flex items-center space-x-1"
                     >
-                      <span>📱 SIM (8830718466)</span>
+                      <span>📱 Vobiz (8830718466)</span>
                     </button>
                     <button
                       type="button"
@@ -903,7 +1051,7 @@ STRICT TELEPHONY RULE: Output ONLY 1-2 spoken response sentences. Never output i
                         : 'bg-slate-900 border-slate-800 text-slate-400 hover:bg-slate-800'
                     }`}
                   >
-                    <span>📱 SIM Card (Cellular GSM)</span>
+                    <span>📱 Vobiz Outbound (PSTN/Mobile)</span>
                   </button>
                 </div>
               </div>
@@ -917,6 +1065,8 @@ STRICT TELEPHONY RULE: Output ONLY 1-2 spoken response sentences. Never output i
                 >
                   <option value="deepgram_aura_asteria">Deepgram Aura Asteria (Cloud Neural - Recommended)</option>
                   <option value="cartesia_hi_sonic">Cartesia Hindi Sonic (Cloud Neural)</option>
+                  <option value="edge_hi-IN-MadhurNeural">EdgeTTS Hindi Madhur (Male)</option>
+                  <option value="edge_mr-IN-AarohiNeural">EdgeTTS Marathi/Marwadi (Female)</option>
                   <option value="openai_alloy">OpenAI Alloy (Cloud Neural)</option>
                   <option value="elevenlabs_rachel">ElevenLabs Rachel (Cloud Neural)</option>
                   <option value="hi_pratham">Piper Hindi Pratham (On-Premise Local)</option>
@@ -981,23 +1131,34 @@ STRICT TELEPHONY RULE: Output ONLY 1-2 spoken response sentences. Never output i
                 Close
               </button>
 
-              <button
-                onClick={handleExecuteManualCall}
-                disabled={isDialing}
-                className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center space-x-2 shadow-lg shadow-emerald-600/25 active:scale-95 disabled:opacity-50"
-              >
-                {isDialing ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>Dialing...</span>
-                  </>
-                ) : (
-                  <>
-                    <PhoneCall className="w-4 h-4" />
-                    <span>📞 Start Call Now</span>
-                  </>
-                )}
-              </button>
+              {activeDialCallId ? (
+                <button
+                  onClick={handleHangupManualCall}
+                  disabled={isEndingCall}
+                  className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center space-x-2 shadow-lg shadow-rose-600/25 active:scale-95 disabled:opacity-50"
+                >
+                  <PhoneOff className="w-4 h-4" />
+                  <span>{isEndingCall ? 'Ending Call...' : '🛑 Hang Up Call'}</span>
+                </button>
+              ) : (
+                <button
+                  onClick={handleExecuteManualCall}
+                  disabled={isDialing}
+                  className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center space-x-2 shadow-lg shadow-emerald-600/25 active:scale-95 disabled:opacity-50"
+                >
+                  {isDialing ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Dialing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <PhoneCall className="w-4 h-4" />
+                      <span>📞 Start Call Now</span>
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -1011,6 +1172,37 @@ STRICT TELEPHONY RULE: Output ONLY 1-2 spoken response sentences. Never output i
         onReject={handleRejectHandoff}
         onClose={() => setIncomingOffer(null)}
         statusMessage={handoffToast}
+      />
+
+      {/* Contact 360 Slide-Over Drawer */}
+      <Contact360Drawer
+        contactId={drawerContactId}
+        isOpen={isDrawerOpen}
+        onClose={() => {
+          setIsDrawerOpen(false);
+          setDrawerContactId(null);
+        }}
+        onCallContact={(phone, name) => openManualDialer(phone, name || '')}
+        onWhatsAppContact={(phone) => {
+          const cleanPhone = phone.replace(/\+/g, '');
+          window.open(`https://wa.me/${cleanPhone}`, '_blank');
+        }}
+        onContactUpdated={() => onRefreshData && onRefreshData()}
+      />
+
+      {/* Add Contact Modal with Duplicate Detection */}
+      <AddContactModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        onContactCreated={(newContact) => {
+          if (onRefreshData) onRefreshData();
+          setDrawerContactId(newContact.id);
+          setIsDrawerOpen(true);
+        }}
+        onOpenExisting={(existingId) => {
+          setDrawerContactId(existingId);
+          setIsDrawerOpen(true);
+        }}
       />
     </div>
   );

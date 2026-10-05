@@ -40,7 +40,7 @@ PROMPT_VERSION = "v1.0"
 # Tried in order until one answers.  Override with ANALYSIS_LLM_MODELS="model1,model2".
 LLM_MODELS: List[str] = [
     m.strip()
-    for m in os.environ.get("ANALYSIS_LLM_MODELS", "qwen/qwen3.8-27b,llama-3.3-70b-versatile").split(",")
+    for m in os.environ.get("ANALYSIS_LLM_MODELS", "qwen/qwen3.8-27b,openai/gpt-oss-20b").split(",")
     if m.strip()
 ]
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"

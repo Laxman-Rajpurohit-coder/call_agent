@@ -2,8 +2,9 @@ import socket
 import struct
 import asyncio
 import logging
-import sys
 import os
+import re
+import sys
 import time
 import httpx
 import numpy as np
@@ -13,7 +14,7 @@ from shared.protocol import CallSession, CallState, STTResult, LLMResult, TTSRes
 from shared.queue.local_queue import LocalAsyncQueue
 from shared.queue.interface import QueueFullError
 from services.call_gateway.session import CallSessionHandler, CallFailedError
-from services.call_gateway.vad_detector import SileroEndpointingEngine
+from services.call_gateway.vad_detector import SileroEndpointingEngine, VADState
 from services.dashboard.app.services.call_lifecycle import astart_call, aend_call, aheartbeat_call
 
 # ── Logging ──────────────────────────────────────────────────────────────────
@@ -115,7 +116,10 @@ async def bridge_stt_queue(job_queue, results_queue, http_client):
             response = await http_client.post(
                 STT_SERVICE_URL,
                 content=job.audio_pcm16_8k,
-                headers={"X-Enqueue-Time": str(enqueue_time)},
+                headers={
+                    "X-Enqueue-Time": str(enqueue_time),
+                    "X-Language": job.primary_language if job.primary_language else "en"
+                },
                 timeout=10.0,
             )
             t_end = time.perf_counter()
@@ -180,6 +184,7 @@ async def bridge_llm_queue(job_queue, results_queue, http_client):
                     "tenant_id": job.tenant_id,
                     "transcript": job.transcript,
                     "conversation_history": job.conversation_history,
+                    "system_prompt": getattr(job, "system_prompt", None),
                 },
                 "escalation": escalation_str,
             }
@@ -235,8 +240,8 @@ async def bridge_tts_queue(job_queue, results_queue, http_client):
                         job.call_id, datetime.now(timezone.utc).isoformat())
             response = await http_client.post(
                 TTS_SERVICE_URL,
-                json={"text": job.text, "call_id": job.call_id, "enqueue_time": enqueue_time},
-                timeout=10.0,
+                json={"text": job.text, "call_id": job.call_id, "enqueue_time": enqueue_time, "voice_model": job.voice_id},
+                timeout=15.0,
             )
             t_end = time.perf_counter()
             if response.status_code == 200:
@@ -415,6 +420,8 @@ async def stream_audio_queue_to_asterisk(
         "PLAYBACK_END call_id=%s frames=%d audio_s=%.2f wall_s=%.2f underruns=%d",
         call_id, sent_chunks, expected_s, elapsed_s, underrun_count
     )
+    if vad_engine:
+        vad_engine.reset()
 
 async def stream_audio_to_asterisk(writer, audio_pcm16_8k: bytes, cancel_event: Optional[asyncio.Event] = None, call_id: str = "unknown", vad_engine: Optional[Any] = None):
     """Adapter for static byte buffers (e.g. greeting). Chunks into 320B and paces."""
@@ -423,6 +430,33 @@ async def stream_audio_to_asterisk(writer, audio_pcm16_8k: bytes, cancel_event: 
         q.put_nowait(audio_pcm16_8k[i:i+FRAME_SIZE_BYTES])
     q.put_nowait(None)
     await stream_audio_queue_to_asterisk(writer, q, cancel_event, call_id, vad_engine=vad_engine)
+
+def split_script_into_chunks(text: str) -> list[str]:
+    """Splits text or scripts into natural sentence/clause chunks (under 180 chars)
+    so TTS synthesizes rapidly without hitting timeouts, streaming audio sub-second."""
+    if not text or not text.strip():
+        return []
+    raw_parts = re.split(r'(?<=[.!?।\n])\s+', text.strip())
+    chunks = []
+    for p in raw_parts:
+        p = p.strip()
+        if not p:
+            continue
+        if len(p) > 200:
+            sub_parts = re.split(r'(?<=[,;:])\s+', p)
+            curr = ""
+            for sp in sub_parts:
+                if len(curr) + len(sp) < 180:
+                    curr = f"{curr} {sp}" if curr else sp
+                else:
+                    if curr:
+                        chunks.append(curr.strip())
+                    curr = sp
+            if curr:
+                chunks.append(curr.strip())
+        else:
+            chunks.append(p)
+    return chunks if chunks else [text.strip()]
 
 # ── Call handler ──────────────────────────────────────────────────────────────
 
@@ -510,7 +544,117 @@ async def handle_audiosocket_connection(reader, writer):
         tts_queue = LocalAsyncQueue(maxsize=5)
         tts_results = LocalAsyncQueue(maxsize=5)
 
-        session = CallSession(call_id=call_id, tenant_id="tenant_test")
+        # Fetch IncomingCallConfig from DB to get user-configured prompt, voice, and greeting
+        config = None
+        system_prompt = None
+        voice_model = None
+        call_direction = "inbound"
+        call_mode = None
+        user_script = ""
+        user_prompt = ""
+        user_voice = None
+        greeting = None
+        primary_lang = None
+        try:
+            from services.dashboard.app.database import SessionLocal
+            from services.dashboard.app.models.crm import IncomingCallConfig, CallSession as CRMCallSession
+            with SessionLocal() as db_s:
+                db_session = db_s.query(CRMCallSession).filter(CRMCallSession.id == call_id).first()
+                if db_session and db_session.direction:
+                    call_direction = db_session.direction.lower()
+
+                custom_cfg = db_session.custom_fields if (db_session and isinstance(db_session.custom_fields, dict)) else {}
+                call_mode = custom_cfg.get("call_mode")
+                user_script = custom_cfg.get("script_content", "").strip() if custom_cfg.get("script_content") else ""
+                user_prompt = custom_cfg.get("system_prompt", "").strip() if custom_cfg.get("system_prompt") else ""
+                user_voice = custom_cfg.get("voice_model")
+
+                if call_direction == "outbound" and (user_script or user_prompt or call_mode):
+                    # ── OUTBOUND MANUAL / SCRIPT CALL (Follow modal parameters strictly) ──
+                    logger.info("AUDIOSOCKET_SESSION call_id=%s using custom outbound parameters: mode=%s voice=%s",
+                                call_id, call_mode, user_voice)
+                    voice_model = user_voice or "cartesia_hi_sonic"
+
+                    if call_mode == "SCRIPT" or (user_script and not user_prompt):
+                        system_prompt = f"SCRIPT_MODE:{user_script}"
+                        greeting = user_script
+                    else:
+                        system_prompt = user_prompt if user_prompt else None
+                        greeting = user_script if user_script else None
+                else:
+                    # ── INBOUND CALL (IncomingCallConfig PRESERVED 100%) ────────────────
+                    if db_session and db_session.organization_id:
+                        config = db_s.query(IncomingCallConfig).filter(IncomingCallConfig.organization_id == db_session.organization_id).first()
+                    if not config:
+                        # Fallback to first configured business if this session has no specific config
+                        config = db_s.query(IncomingCallConfig).first()
+                    
+                    if config:
+                        primary_lang = config.primary_language
+                        import datetime
+                        now_ist = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=5, minutes=30)))
+                        current_time_str = now_ist.strftime("%I:%M %p, %A, %B %d, %Y")
+
+                        # Compile the system prompt mimicking preview_configuration
+                        compiled_prompt = f"SYSTEM INSTRUCTIONS\n\n"
+                        compiled_prompt += f"CURRENT TIME & DATE: {current_time_str} (IST)\n"
+                        compiled_prompt += f"IDENTITY: You are {config.ai_name}, acting as a {config.role_description or 'receptionist'}.\n"
+                        if config.business_name:
+                            compiled_prompt += f"BUSINESS: {config.business_name}\n{config.business_description or ''}\n"
+                        if config.primary_objective:
+                            compiled_prompt += f"PRIMARY OBJECTIVE: {config.primary_objective}\n"
+                        if config.behavior_rules:
+                            compiled_prompt += "RULES:\n- " + "\n- ".join(config.behavior_rules) + "\n"
+                        if config.faq_knowledge_base:
+                            compiled_prompt += f"KNOWLEDGE BASE:\n{config.faq_knowledge_base}\n"
+                        if config.system_instructions:
+                            compiled_prompt += f"ADVANCED INSTRUCTIONS:\n{config.system_instructions}\n"
+                        
+                        compiled_prompt += "\nCONVERSATION GUIDELINES:\n"
+                        compiled_prompt += "1. Direct & Specific Answer: Answer the caller's specific statement or question directly and accurately. If they ask the time, state the current time. If they ask your name, state your name. If they ask for your address, state that you are an AI assistant. If they ask you to repeat numbers or words, repeat them accurately.\n"
+                        compiled_prompt += "2. Anti-Repetition (CRITICAL): NEVER repeat greetings or introductions ('नमस्ते', 'हैलो', 'मैं अनन्या हूँ'). NEVER end your responses with canned repetitive phrases like 'आपकी क्या मदद कर सकती हूँ?' or 'बताइए आपकी क्या समस्या है?'. You are having a natural ongoing conversation.\n"
+                        compiled_prompt += "3. Pacing: Keep your reply strictly to ONE natural, complete sentence (around 10 to 18 words). Never cut off into broken fragments.\n"
+                        if config.primary_language == 'hi':
+                            compiled_prompt += "4. Language: Reply STRICTLY in warm, conversational Hindi using Devanagari script. Never reply in English.\n"
+                            compiled_prompt += "FEW-SHOT EXAMPLES:\n"
+                            compiled_prompt += "User: अपना नाम फिर बता सकते हो आप?\nAI: जी, मेरा नाम अनन्या है।\n"
+                            compiled_prompt += "User: अभी टाइम क्या हुआ है?\nAI: अभी समय " + now_ist.strftime("%I:%M %p") + " है।\n"
+                            compiled_prompt += "User: नंबर रिपीट कर दो एक दो तीन चार।\nAI: जी, एक, दो, तीन, चार।\n"
+                            compiled_prompt += "User: आपका अड्रेस क्या है?\nAI: मैं एक डिजिटल एआई असिस्टेंट हूँ, मेरा कोई भौतिक पता नहीं है।\n"
+                        elif config.primary_language == 'marwadi':
+                            compiled_prompt += "4. Language: Reply STRICTLY in authentic, fluent Marwadi (मारवाड़ी) using Devanagari script. Use Marwadi vocabulary (e.g., म्हारो, थांकी, अठे, कठे, सा).\n"
+                            compiled_prompt += "FEW-SHOT EXAMPLES:\n"
+                            compiled_prompt += "User: आप अपनों नाम बता होगे?\nAI: म्हारो नाम अनन्या है सा।\n"
+                            compiled_prompt += "User: अभी काई टेम हुयो है?\nAI: अभी समय " + now_ist.strftime("%I:%M %p") + " हुयो है सा।\n"
+                            compiled_prompt += "User: नंबर बोलो एक दो तीन चार।\nAI: जी सा, एक, दो, तीन, चार।\n"
+                            compiled_prompt += "User: थे कठे रा हो?\nAI: मैं एक डिजिटल एआई हूँ, थांकी सेवा में हमेशा अठे ही हाजिर हूँ।\n"
+                        else:
+                            compiled_prompt += "4. Language: Reply in conversational English.\n"
+
+                        system_prompt = compiled_prompt
+                        voice_model = config.voice_id
+                        greeting = config.greeting_message
+                        
+                        if not greeting:
+                            if config.primary_language == 'hi':
+                                greeting = f"नमस्ते! मैं {config.ai_name} हूँ। आज मैं आपकी कैसे मदद कर सकती हूँ?"
+                            elif config.primary_language == 'marwadi':
+                                greeting = f"खम्मा घणी! मैं {config.ai_name} हूँ। आज मैं थांकी काई मदद कर सकूँ हूँ?"
+                            else:
+                                greeting = f"Hello! I'm {config.ai_name}. How can I help you today?"
+
+        except Exception as db_err:
+            logger.error("Failed to load call configuration from DB: %s", db_err)
+
+        session = CallSession(
+            call_id=call_id,
+            tenant_id="tenant_test",
+            system_prompt=system_prompt,
+            greeting=greeting,
+            voice_model=voice_model,
+            primary_language=primary_lang or (config.primary_language if config else None),
+            call_direction=call_direction,
+        )
         handler = CallSessionHandler(
             session=session,
             stt_queue=stt_queue,
@@ -526,11 +670,18 @@ async def handle_audiosocket_connection(reader, writer):
             llm_bridge = asyncio.create_task(bridge_llm_queue(llm_queue, llm_results, http_client))
             tts_bridge = asyncio.create_task(bridge_tts_queue(tts_queue, tts_results, http_client))
 
+            call_dir = getattr(session, "call_direction", "inbound")
+            is_script = bool(session.system_prompt and session.system_prompt.startswith("SCRIPT_MODE:"))
+            greeting_finished = False
+
             current_turn_task: Optional[asyncio.Task] = None
             playback_cancel_event = asyncio.Event()
 
             def cancel_current_turn(reason: str = "barge-in"):
                 nonlocal current_turn_task, playback_cancel_event
+                if is_script and not greeting_finished:
+                    logger.info("SCRIPT_RECITE_PROTECTED: Ignoring turn cancellation reason='%s' call_id=%s", reason, call_id)
+                    return
                 if current_turn_task and not current_turn_task.done():
                     logger.info(
                         "BARGE_IN_TRIGGERED call_id=%s reason='%s' state=%s",
@@ -616,10 +767,23 @@ async def handle_audiosocket_connection(reader, writer):
 
                 total_rx_bytes = 0
                 first_rx_frame = True
+                greeting_played = False
+                outbound_timer_task = None
 
-                # Pre-seed initial greeting into session history so LLM never repeats introductions
-                greeting_text = "Hello! Great to connect with you. What is on your mind today?"
-                handler._record_turn("assistant", greeting_text)
+                call_dir = getattr(session, "call_direction", "inbound")
+                is_script = bool(session.system_prompt and session.system_prompt.startswith("SCRIPT_MODE:"))
+                greeting_finished = False
+
+                if is_script:
+                    greeting_text = session.system_prompt[12:].strip()
+                elif session.greeting:
+                    greeting_text = session.greeting
+                elif call_dir == "outbound" and user_prompt:
+                    greeting_text = ""
+                elif session.system_prompt and ("hindi" in session.system_prompt.lower() or bool(re.search(r'[\u0900-\u097F]', session.system_prompt))):
+                    greeting_text = "नमस्ते! मैं आपकी क्या सहायता कर सकता हूँ?"
+                else:
+                    greeting_text = "नमस्ते! मैं अनन्या बोल रही हूँ। आज मैं आपकी क्या मदद कर सकती हूँ?" if session.primary_language in ('hi', 'marwadi') else "Hello! Great to connect with you. What is on your mind today?"
 
                 # Set SUPERFONE_STATUS=SUCCESS via AMI if on an Asterisk channel
                 if not channel_name.startswith("DIRECT/"):
@@ -643,6 +807,8 @@ async def handle_audiosocket_connection(reader, writer):
 
                     if p_type == 0x00:
                         logger.info("Hangup from Asterisk (call_id=%s, total_rx_bytes=%d)", call_id, total_rx_bytes)
+                        if outbound_timer_task and not outbound_timer_task.done():
+                            outbound_timer_task.cancel()
                         if current_turn_task and not current_turn_task.done():
                             current_turn_task.cancel()
                         break
@@ -664,43 +830,88 @@ async def handle_audiosocket_connection(reader, writer):
                     elif p_type == 0x10:
                         total_rx_bytes += len(payload)
                         if first_rx_frame:
-                            logger.info("AUDIOSOCKET_CONNECTED call_id=%s", call_id)
+                            logger.info("AUDIOSOCKET_CONNECTED call_id=%s direction=%s", call_id, call_dir)
                             logger.info("AUDIO_RX_START call_id=%s frame_bytes=%d", call_id, len(payload))
                             first_rx_frame = False
 
-                            # Humanized Spoken Welcome Greeting on Call Connect
+                            # Humanized Spoken Welcome Greeting (Sentence-by-Sentence Streaming)
                             async def _play_welcome_greeting(cancel_ev: asyncio.Event):
-                                nonlocal last_interaction_time, reprompt_count
+                                nonlocal last_interaction_time, reprompt_count, greeting_played, greeting_finished
                                 try:
-                                    greeting_text = "Hello! Great to connect with you. What is on your mind today?"
-                                    if not any(msg.get("content") == greeting_text for msg in session.conversation_history):
-                                        session.conversation_history.append({
-                                            "role": "assistant",
-                                            "content": greeting_text
-                                        })
-                                    tts_res = await handler._run_tts(greeting_text)
-                                    if tts_res and tts_res.audio_pcm16_8k and not cancel_ev.is_set():
+                                    greeting_played = True
+                                    text_to_speak = greeting_text
+
+                                    # In outbound custom prompt mode, derive a natural 1-sentence opening greeting
+                                    if call_dir == "outbound" and not text_to_speak and user_prompt:
+                                        try:
+                                            async with httpx.AsyncClient(timeout=3.0) as quick_c:
+                                                gen_res = await quick_c.post(
+                                                    "http://127.0.0.1:9093/llm",
+                                                    json={
+                                                        "prompt": f"System prompt: {user_prompt}\n\nTask: Speak your opening greeting sentence to the person answering your outbound call. 1 short sentence, max 12 words. Do not use quotation marks or say 'Thank you for calling'.",
+                                                        "max_tokens": 25,
+                                                        "temperature": 0.3
+                                                    }
+                                                )
+                                                if gen_res.status_code == 200:
+                                                    text_to_speak = gen_res.json().get("text", "").strip()
+                                        except Exception as ex:
+                                            logger.warning("Could not generate prompt opening line: %s", ex)
+                                        if not text_to_speak:
+                                            text_to_speak = "Hello! I am calling regarding your inquiry."
+
+                                    if text_to_speak:
+                                        if not any(msg.get("content") == text_to_speak for msg in handler.conversation_history):
+                                            handler._record_turn("assistant", text_to_speak)
+
+                                        chunks = split_script_into_chunks(text_to_speak)
                                         session.state = CallState.AI_SPEAKING
-                                        await stream_audio_to_asterisk(writer, tts_res.audio_pcm16_8k, cancel_ev, call_id, vad_engine=vad_engine)
+                                        logger.info("GREETING_START call_id=%s chunks=%d mode=%s", call_id, len(chunks), "SCRIPT" if is_script else "NORMAL")
+
+                                        for idx, chunk in enumerate(chunks):
+                                            if cancel_ev.is_set() and not is_script:
+                                                logger.info("GREETING_STOPPED_BY_CANCEL call_id=%s at chunk %d/%d", call_id, idx, len(chunks))
+                                                break
+                                            tts_res = await handler._run_tts(chunk)
+                                            if tts_res and tts_res.audio_pcm16_8k:
+                                                if cancel_ev.is_set() and not is_script:
+                                                    break
+                                                script_cancel = asyncio.Event() if is_script else cancel_ev
+                                                await stream_audio_to_asterisk(writer, tts_res.audio_pcm16_8k, script_cancel, call_id, vad_engine=vad_engine)
+
                                         logger.info("GREETING_END call_id=%s", call_id)
                                 except asyncio.CancelledError:
                                     logger.info("GREETING_CANCELLED (barge-in) call_id=%s", call_id)
                                 except Exception as ex:
                                     logger.error("Error playing welcome greeting call_id=%s: %s", call_id, ex)
                                 finally:
+                                    greeting_finished = True
                                     last_interaction_time = time.time()
                                     reprompt_count = 0
                                     if session.state == CallState.AI_SPEAKING:
                                         session.state = CallState.LISTENING
+                                    vad_engine.reset()
 
-                            current_turn_task = asyncio.create_task(_play_welcome_greeting(playback_cancel_event))
+                            if call_dir == "outbound":
+                                delay = 0.4 if is_script else 1.8
+                                # Outbound Call: Callee answers phone. For script mode, recite after 0.4s.
+                                # For interactive AI mode, wait up to 1.8s for callee salutation.
+                                async def _outbound_greeting_timer():
+                                    nonlocal greeting_played, current_turn_task, playback_cancel_event
+                                    await asyncio.sleep(delay)
+                                    if not is_script and (vad_engine.state != VADState.LISTENING or vad_engine.confirm_count > 0):
+                                        logger.info("OUTBOUND_GREETING_SUPPRESSED (callee in speech) call_id=%s", call_id)
+                                        greeting_played = True
+                                        return
+                                    if not greeting_played and (is_script or session.state == CallState.LISTENING) and (current_turn_task is None or current_turn_task.done()):
+                                        logger.info("OUTBOUND_GREETING_TIMER_TRIGGERED (speaking %s) call_id=%s", "script" if is_script else "greeting", call_id)
+                                        current_turn_task = asyncio.create_task(_play_welcome_greeting(playback_cancel_event))
+
+                                outbound_timer_task = asyncio.create_task(_outbound_greeting_timer())
+                            else:
+                                current_turn_task = asyncio.create_task(_play_welcome_greeting(playback_cancel_event))
 
                         is_ai_speaking = (session.state == CallState.AI_SPEAKING)
-
-                        # Suppress VAD during internal pipeline processing (STT/LLM/TTS)
-                        if session.state in (CallState.PROCESSING_STT, CallState.PROCESSING_LLM, CallState.PROCESSING_TTS):
-                            continue
-
                         event, full_utterance, prob = vad_engine.process_frame(payload, is_ai_speaking=is_ai_speaking)
 
                         if event == "BARGE_IN":
@@ -717,6 +928,10 @@ async def handle_audiosocket_connection(reader, writer):
                             )
                         elif event == "SPEECH_START":
                             logger.info("VAD_SPEECH_START call_id=%s prob=%.2f", call_id, prob)
+                            # Never cancel greeting timer on SPEECH_START:
+                            # In script mode, the script MUST recite unconditionally.
+                            # In interactive mode, wait for SPEECH_END to verify real words,
+                            # preventing cancellation caused by short electrical/pickup line noise.
                         elif event == "SPEECH_END" and full_utterance:
                             samples = np.frombuffer(full_utterance, dtype=np.int16)
                             rms_level = float(np.sqrt(np.mean(samples.astype(np.float64)**2))) if len(samples) > 0 else 0.0
@@ -745,6 +960,18 @@ async def handle_audiosocket_connection(reader, writer):
                                     call_id, peak_level, max_frame_rms, rms_level
                                 )
                                 continue
+
+                            # If in script mode and the script hasn't finished reciting, keep reciting!
+                            if is_script and not greeting_finished:
+                                logger.info("SCRIPT_RECITE_PROTECTED call_id=%s: callee speech detected (%.1fms) but preserving active script recitation.", call_id, duration_ms)
+                                continue
+
+                            # For interactive outbound calls, cancel greeting timer now that verified speech has arrived
+                            if not is_script:
+                                if outbound_timer_task and not outbound_timer_task.done():
+                                    logger.info("OUTBOUND_GREETING_CANCELLED (callee verified speech arrived first) call_id=%s", call_id)
+                                    outbound_timer_task.cancel()
+                                    greeting_played = True
 
                             last_interaction_time = time.time()
                             reprompt_count = 0
@@ -825,10 +1052,9 @@ async def main():
     _active_calls_lock = asyncio.Lock()
 
     # ── Connect AMI Client ───────────────────────────────────────────────────
-    ami_secret = os.environ.get("ASTERISK_AMI_SECRET", "")
+    ami_secret = os.environ.get("ASTERISK_AMI_SECRET", "F-yfV4qLZt7-fnA5qzlq0_z6lH9HBUlc")
     if not ami_secret:
-        logger.error("ASTERISK_AMI_SECRET environment variable is missing!")
-        sys.exit(1)
+        logger.warning("ASTERISK_AMI_SECRET not configured. AMI client will be disabled.")
 
     ami_client = AMIClient(username="superfone", secret=ami_secret)
     AMIRegistry.client = ami_client

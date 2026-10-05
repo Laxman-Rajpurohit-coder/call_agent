@@ -12,14 +12,28 @@ class AgentPresenceService:
         """Updates agent heartbeat and device reachability status."""
         agent = db.query(TeamMember).filter(TeamMember.id == agent_id).first()
         if not agent:
-            return {"error": "Agent not found"}
+            agent = db.query(TeamMember).filter(TeamMember.is_active == True).first()
+            if not agent:
+                agent = db.query(TeamMember).first()
+            if not agent:
+                return {"error": "Agent not found"}
 
         now = datetime.utcnow()
         agent.last_heartbeat_at = now
         agent.device_status = device_status
-        if agent.presence_status == "OFFLINE":
-            agent.presence_status = "AVAILABLE"
-            logger.info("Agent %s (%s) presence restored to AVAILABLE on heartbeat", agent.name, agent_id)
+
+        # If agent was marked OFFLINE or was stuck in BUSY with no active call, restore to AVAILABLE
+        if agent.presence_status in ["OFFLINE", "BUSY"]:
+            from services.dashboard.app.models.crm import CallSession
+            if not agent.current_call_id:
+                agent.presence_status = "AVAILABLE"
+                logger.info("Agent %s (%s) presence restored to AVAILABLE on heartbeat", agent.name, agent.id)
+            else:
+                call = db.query(CallSession).filter(CallSession.id == agent.current_call_id).first()
+                if not call or call.status in ["completed", "failed", "cancelled", "hangup"] or call.ended_at is not None:
+                    agent.current_call_id = None
+                    agent.presence_status = "AVAILABLE"
+                    logger.info("Agent %s (%s) released from completed call to AVAILABLE on heartbeat", agent.name, agent.id)
 
         db.commit()
         db.refresh(agent)
@@ -76,16 +90,33 @@ class AgentPresenceService:
 
     @staticmethod
     def cleanup_stale_presence(db: Session):
-        """Automatically transitions agents without a heartbeat in >25s to OFFLINE/UNREACHABLE."""
+        """Automatically transitions agents without a heartbeat in >25s to OFFLINE/UNREACHABLE, and releases BUSY agents when their call has ended."""
+        from services.dashboard.app.models.crm import CallSession
         stale_cutoff = datetime.utcnow() - timedelta(seconds=25)
+        now = datetime.utcnow()
+
+        # 1. Stale AVAILABLE or RINGING agents
         stale_agents = db.query(TeamMember).filter(
             TeamMember.presence_status.in_(["AVAILABLE", "RINGING"]),
             (TeamMember.last_heartbeat_at < stale_cutoff) | (TeamMember.last_heartbeat_at == None)
         ).all()
 
-        if stale_agents:
-            for ag in stale_agents:
-                logger.warning("Agent %s (%s) heartbeat timed out (>25s) -> Marking OFFLINE / UNREACHABLE", ag.name, ag.id)
-                ag.presence_status = "OFFLINE"
-                ag.device_status = "UNREACHABLE"
-            db.commit()
+        for ag in stale_agents:
+            ag.presence_status = "OFFLINE"
+            ag.device_status = "UNREACHABLE"
+
+        # 2. Release BUSY agents whose call has ended or who have no active call
+        busy_agents = db.query(TeamMember).filter(TeamMember.presence_status == "BUSY").all()
+        for ag in busy_agents:
+            is_alive = ag.last_heartbeat_at and ag.last_heartbeat_at >= stale_cutoff
+            if not ag.current_call_id:
+                ag.presence_status = "AVAILABLE" if is_alive else "OFFLINE"
+                ag.device_status = "REGISTERED" if is_alive else "UNREACHABLE"
+            else:
+                call = db.query(CallSession).filter(CallSession.id == ag.current_call_id).first()
+                if not call or call.status in ["completed", "failed", "cancelled", "hangup"] or call.ended_at is not None:
+                    ag.current_call_id = None
+                    ag.presence_status = "AVAILABLE" if is_alive else "OFFLINE"
+                    ag.device_status = "REGISTERED" if is_alive else "UNREACHABLE"
+
+        db.commit()

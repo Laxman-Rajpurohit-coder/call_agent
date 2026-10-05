@@ -76,6 +76,7 @@ async def lifespan(app: FastAPI):
     validate_production_secrets()
 
     # Initialize DB tables & migrations
+    from services.dashboard.app.models.crm import IncomingCallConfig, IncomingCallConfigAudit
     Base.metadata.create_all(bind=engine)
     run_migrations()
     
@@ -160,25 +161,133 @@ class ExotelOutboundRequest(BaseModel):
     contact_name: Optional[str] = None
     script_content: Optional[str] = ""
     system_prompt: Optional[str] = ""
+    provider: Optional[str] = "vobiz"
+    call_mode: Optional[str] = "INTERACTIVE_AI"
+    voice_model: Optional[str] = "cartesia_hi_sonic"
+    dial_mode: Optional[str] = "sim"
 
 @app.post("/api/telephony/outbound-call")
 @app.post("/api/v1/telephony/outbound-call")
-async def handle_exotel_outbound_call(req: ExotelOutboundRequest):
+async def handle_telephony_outbound_call(req: ExotelOutboundRequest):
     """
-    Triggers automated outbound cellular/PSTN call via Exotel API
-    routing to the Voicebot Flow (Flow 1337835).
+    Triggers automated outbound cellular/PSTN call via Vobiz or Exotel API.
     """
     to_phone = req.to.strip() if req.to else ""
     if not to_phone:
         raise HTTPException(status_code=400, detail="Recipient phone number (to) is required.")
 
+    # 1. Primary Outbound Provider: VOBIZ API
+    vobiz_auth_id = os.environ.get("VOBIZ_AUTH_ID")
+    vobiz_token = os.environ.get("VOBIZ_AUTH_TOKEN")
+    vobiz_caller_id = os.environ.get("VOBIZ_CALLER_ID", "918064269009")
+    vobiz_public_url = os.environ.get("VOBIZ_PUBLIC_URL", "https://drool-envoy-sandy.ngrok-free.dev")
+
+    digits_only = "".join(c for c in to_phone if c.isdigit())
+    if len(digits_only) == 10:
+        clean_vobiz_to = "91" + digits_only
+    elif digits_only.startswith("91") and len(digits_only) == 12:
+        clean_vobiz_to = digits_only
+    else:
+        clean_vobiz_to = digits_only
+
+    if vobiz_auth_id and vobiz_token and (req.provider == "vobiz" or not os.environ.get("EXOTEL_API_KEY")):
+        call_uuid = str(uuid.uuid4())
+        vobiz_url = f"https://api.vobiz.ai/api/v1/Account/{vobiz_auth_id}/Call/"
+        answer_url = f"{vobiz_public_url.rstrip('/')}/answer?cid={call_uuid}"
+
+        # Record call session and custom fields in CRM DB before placing call
+        from services.dashboard.app.database import SessionLocal
+        from services.dashboard.app.models import CallSession, Organization, Contact
+        with SessionLocal() as db_s:
+            org = db_s.query(Organization).first()
+            org_id = org.id if org else str(uuid.uuid4())
+            contact = db_s.query(Contact).filter(Contact.phone_number == to_phone).first()
+            if not contact:
+                contact = Contact(
+                    id=str(uuid.uuid4()),
+                    organization_id=org_id,
+                    phone_number=to_phone,
+                    name=req.contact_name or f"Lead {to_phone}",
+                    status="ACTIVE",
+                    preferred_language="hi"
+                )
+                db_s.add(contact)
+                db_s.commit()
+                db_s.refresh(contact)
+
+            custom_data = {
+                "call_mode": req.call_mode or ("SCRIPT" if req.script_content else "INTERACTIVE_AI"),
+                "voice_model": req.voice_model or "cartesia_hi_sonic",
+                "script_content": req.script_content.strip() if req.script_content else "",
+                "system_prompt": req.system_prompt.strip() if req.system_prompt else "",
+                "contact_name": req.contact_name or ""
+            }
+            session_rec = CallSession(
+                id=call_uuid,
+                organization_id=org_id,
+                contact_id=contact.id if contact else None,
+                provider="vobiz",
+                direction="outbound",
+                dial_mode=req.dial_mode or "sim",
+                from_number=vobiz_caller_id,
+                to_number=to_phone,
+                status="in_progress",
+                duration_s=0.0,
+                custom_fields=custom_data
+            )
+            db_s.add(session_rec)
+            db_s.commit()
+
+        headers = {
+            "X-Auth-ID": vobiz_auth_id,
+            "X-Auth-Token": vobiz_token,
+            "Content-Type": "application/json"
+        }
+        body = {
+            "from": vobiz_caller_id,
+            "to": clean_vobiz_to,
+            "answer_url": answer_url,
+            "answer_method": "POST"
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.post(vobiz_url, headers=headers, json=body)
+
+            data = resp.json() if resp.status_code in (200, 201) else {"error": resp.text}
+            print(f"[Vobiz Outbound Call] Dialed {clean_vobiz_to} (cid={call_uuid}) via Vobiz API: HTTP {resp.status_code} - {data}")
+
+            if isinstance(data, dict) and data.get("request_uuid"):
+                v_req_uuid = data.get("request_uuid")
+                try:
+                    with SessionLocal() as db_s2:
+                        s_rec = db_s2.query(CallSession).filter(CallSession.id == call_uuid).first()
+                        if s_rec:
+                            c_f = dict(s_rec.custom_fields or {})
+                            c_f["vobiz_call_uuid"] = v_req_uuid
+                            s_rec.custom_fields = c_f
+                            db_s2.commit()
+                except Exception as cf_err:
+                    print(f"[Vobiz Custom Fields Save Warning] {cf_err}")
+
+            if resp.status_code not in (200, 201):
+                raise HTTPException(status_code=resp.status_code, detail=f"Vobiz API error: {resp.text}")
+
+            return {"success": True, "provider": "vobiz", "data": data, "call_id": call_uuid}
+        except HTTPException:
+            raise
+        except Exception as err:
+            print(f"[Vobiz Outbound Call Error]: {err}")
+            raise HTTPException(status_code=500, detail=str(err))
+
+    # 2. Secondary Provider: Exotel API
     account_sid = os.environ.get("EXOTEL_ACCOUNT_SID", "snazzyitsolutions1")
     api_key = os.environ.get("EXOTEL_API_KEY")
     api_token = os.environ.get("EXOTEL_API_TOKEN")
     caller_id = os.environ.get("EXOTEL_VIRTUAL_NUMBER", "08047283364")
 
     if not api_key or not api_token:
-        raise HTTPException(status_code=500, detail="Exotel API key or token missing in .env")
+        raise HTTPException(status_code=500, detail="Telephony credentials missing (neither Vobiz nor Exotel configured)")
 
     clean_to = to_phone.replace(" ", "").replace("+91", "0")
     auth_str = base64.b64encode(f"{api_key}:{api_token}".encode()).decode()
@@ -210,8 +319,7 @@ async def handle_exotel_outbound_call(req: ExotelOutboundRequest):
         # Record call session in CRM DB
         from services.dashboard.app.database import SessionLocal
         from services.dashboard.app.models import CallSession, Organization, Contact
-        db_s = SessionLocal()
-        try:
+        with SessionLocal() as db_s:
             org = db_s.query(Organization).first()
             org_id = org.id if org else str(uuid.uuid4())
             contact = db_s.query(Contact).filter(Contact.phone_number == to_phone).first()
@@ -228,15 +336,17 @@ async def handle_exotel_outbound_call(req: ExotelOutboundRequest):
             )
             db_s.add(session_rec)
             db_s.commit()
-        except Exception as db_err:
-            print(f"[Exotel Outbound DB Log Warning]: {db_err}")
-        finally:
-            db_s.close()
 
         if resp.status_code not in (200, 201):
             raise HTTPException(status_code=resp.status_code, detail=f"Exotel API error: {resp.text}")
 
-        return {"success": True, "data": data}
+        return {"success": True, "provider": "exotel", "data": data}
+
+    except HTTPException:
+        raise
+    except Exception as err:
+        print(f"[Exotel Outbound Call Error]: {err}")
+        raise HTTPException(status_code=500, detail=str(err))
 
     except HTTPException:
         raise

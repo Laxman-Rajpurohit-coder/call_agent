@@ -2,8 +2,38 @@ import os
 import time
 import asyncio
 import re
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Follow Multi-Path .env Resolution Rule
+_env_paths = [
+    Path(__file__).parent / ".env",
+    Path(__file__).parent.parent / ".env",
+    Path(__file__).parent.parent.parent / ".env",
+    Path("c:/daily_works/superfone_call/.env")
+]
+for _ep in _env_paths:
+    if _ep.exists():
+        load_dotenv(str(_ep), override=True)
+        break
+
+import httpx
+
+_http_client = None
+
+def _get_http() -> httpx.Client:
+    global _http_client
+    if _http_client is None or _http_client.is_closed:
+        _http_client = httpx.Client(
+            timeout=httpx.Timeout(4.5, connect=2.5),
+            limits=httpx.Limits(max_keepalive_connections=20, max_connections=50, keepalive_expiry=120.0),
+        )
+    return _http_client
+
 from concurrent.futures import ProcessPoolExecutor
 from aiohttp import web
+import numpy as np
+from scipy.signal import resample_poly
 try:
     from faster_whisper import WhisperModel
 except ImportError:
@@ -13,8 +43,11 @@ except ImportError:
 whisper_model = None
 
 def init_worker():
-    """Pool initializer. Loads the model ONCE at process startup."""
+    """Pool initializer. In 3-API cloud mode, skip loading local CPU whisper model."""
     global whisper_model
+    if os.environ.get("GROQ_API_KEY") or os.environ.get("DEEPGRAM_API_KEY"):
+        whisper_model = None
+        return
     if WhisperModel is None:
         return
     os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
@@ -42,9 +75,25 @@ def detect_repetition(text: str) -> tuple[bool, str, int]:
                     k += 1
                 return True, " ".join(phrase), k
 
-    return False, "", 0
+_HALLUCINATION_EXACT = {
+    "thank you", "thanks", "amen", "you", "bye", "subtitles",
+    "झाल", "झाल झाल", "झाला", "झालं", "बख़जब", "बघितल्याबद्दल धन्यवाद", "धन्यवाद"
+}
 
-def transcribe_audio(audio_pcm16_8k: bytes, enqueue_time: float) -> dict:
+def is_hallucination_text(tx: str, lang: str = "en") -> bool:
+    if not tx or not tx.strip():
+        return True
+    cleaned = tx.strip().lower().rstrip('.!,?।')
+    if cleaned in _HALLUCINATION_EXACT:
+        return True
+    if any(c in cleaned for c in "ðþæø"):
+        return True
+    parts = cleaned.split()
+    if len(parts) >= 2 and all(p == parts[0] for p in parts) and parts[0] in ("झाल", "झाला", "बख़जब"):
+        return True
+    return False
+
+def transcribe_audio(audio_pcm16_8k: bytes, enqueue_time: float, language: str = "en") -> dict:
     """
     Runs inside the worker process.
 
@@ -67,7 +116,7 @@ def transcribe_audio(audio_pcm16_8k: bytes, enqueue_time: float) -> dict:
 
     if groq_key or deepgram_key:
         try:
-            import io, wave, httpx
+            import io, wave
             wav_io = io.BytesIO()
             with wave.open(wav_io, "wb") as wf:
                 wf.setnchannels(1)
@@ -75,41 +124,69 @@ def transcribe_audio(audio_pcm16_8k: bytes, enqueue_time: float) -> dict:
                 wf.setframerate(8000)
                 wf.writeframes(audio_pcm16_8k)
             wav_mem = wav_io.getvalue()
+            http_cli = _get_http()
 
             if groq_key:
                 try:
-                    res = httpx.post(
+                    # Strip dialect specific codes if present for Groq (e.g. en-IN -> en)
+                    groq_lang = language.split("-")[0] if language else "en"
+                    # Only pass language if it's not marwadi since whisper doesn't have marwadi code
+                    groq_data = {"model": "whisper-large-v3-turbo", "language": "hi" if groq_lang == "marwadi" else groq_lang}
+                    if groq_lang == "marwadi":
+                        groq_data["prompt"] = "खम्मा घणी, म्हारो, थांकी, अठे, कठे, काई, सा, पण, मारवाड़ी, बता, होगे, मने, पाछो, सको"
+                    elif groq_lang == "hi":
+                        groq_data["prompt"] = "नमस्ते, हैलो, हाँ जी, बताइए, आप क्या कह रहे हैं, मैं सुन रही हूँ।"
+
+                    res = http_cli.post(
                         "https://api.groq.com/openai/v1/audio/transcriptions",
                         headers={"Authorization": f"Bearer {groq_key}"},
                         files={"file": ("speech.wav", wav_mem, "audio/wav")},
-                        data={"model": "whisper-large-v3-turbo", "language": "en"},
-                        timeout=3.0
+                        data=groq_data,
                     )
                     if res.status_code == 200:
                         tx = res.json().get("text", "").strip()
-                        if tx and tx.lower().rstrip('.!') not in ["thank you", "thanks", "amen"]:
+                        if tx and not is_hallucination_text(tx, groq_lang):
                             inf_ms = (time.time() - worker_start_time) * 1000.0
                             return {"text": tx, "confidence": 0.98, "avg_logprob": -0.1, "no_speech_prob": 0.0, "compression_ratio": 1.0, "audio_duration_ms": len(audio_pcm16_8k)/16.0, "queue_wait_ms": queue_wait_ms, "preprocess_ms": 1.0, "inference_ms": inf_ms, "worker_pid": os.getpid()}
-                except Exception:
-                    pass
+                    else:
+                        print(f"[STT Worker] Groq HTTP {res.status_code}: {res.text[:120]}")
+                except Exception as ex:
+                    print(f"[STT Worker] Groq error: {ex}")
 
             if deepgram_key:
                 try:
-                    res = httpx.post(
-                        "https://api.deepgram.com/v1/listen?model=nova-2&smart_format=true",
+                    dg_lang = language.split("-")[0] if language else "en"
+                    dg_lang = "hi" if dg_lang == "marwadi" else dg_lang
+                    res = http_cli.post(
+                        f"https://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&language={dg_lang}",
                         headers={"Authorization": f"Token {deepgram_key}", "Content-Type": "audio/wav"},
                         content=wav_mem,
-                        timeout=3.0
                     )
                     if res.status_code == 200:
                         tx = res.json()["results"]["channels"][0]["alternatives"][0]["transcript"].strip()
-                        if tx:
+                        if tx and not is_hallucination_text(tx, dg_lang):
                             inf_ms = (time.time() - worker_start_time) * 1000.0
                             return {"text": tx, "confidence": 0.98, "avg_logprob": -0.1, "no_speech_prob": 0.0, "compression_ratio": 1.0, "audio_duration_ms": len(audio_pcm16_8k)/16.0, "queue_wait_ms": queue_wait_ms, "preprocess_ms": 1.0, "inference_ms": inf_ms, "worker_pid": os.getpid()}
-                except Exception:
-                    pass
-        except Exception:
-            pass
+                    else:
+                        print(f"[STT Worker] Deepgram HTTP {res.status_code}: {res.text[:120]}")
+                except Exception as ex:
+                    print(f"[STT Worker] Deepgram error: {ex}")
+        except Exception as ex:
+            print(f"[STT Worker] Cloud STT error: {ex}")
+
+        # In cloud-first mode, if both Groq and Deepgram failed, do not block CPU with local Whisper
+        return {
+            "text": "",
+            "confidence": 0.0,
+            "avg_logprob": -99.0,
+            "no_speech_prob": 1.0,
+            "compression_ratio": 1.0,
+            "audio_duration_ms": len(audio_pcm16_8k) / 16.0,
+            "queue_wait_ms": queue_wait_ms,
+            "preprocess_ms": 0.0,
+            "inference_ms": (time.time() - worker_start_time) * 1000.0,
+            "worker_pid": os.getpid()
+        }
 
     if whisper_model is None:
         init_worker()
@@ -173,8 +250,10 @@ def transcribe_audio(audio_pcm16_8k: bytes, enqueue_time: float) -> dict:
 
         text = llm_consumed_text
 
-        confidence = float(np.mean(confidences)) if confidences else 0.0
-        confidence = max(0.0, min(1.0, confidence))
+        if text.strip() and not is_hallucination_text(text, language):
+            confidence = max(0.85, float(np.mean(confidences)) if confidences else 0.85)
+        else:
+            confidence = 0.0
         avg_logprob = float(np.mean(logprobs)) if logprobs else -99.0
         no_speech_prob = float(np.mean(no_speech_probs)) if no_speech_probs else 0.0
         compression_ratio = float(np.mean(compression_ratios)) if compression_ratios else 1.0
@@ -192,17 +271,17 @@ def transcribe_audio(audio_pcm16_8k: bytes, enqueue_time: float) -> dict:
             text = ""
 
         # 3. Soft Hallucination Filter (Preserves short speech like "Alo", "Hello", "Haan", "Ji")
-        is_hallucination = False
+        is_soft_hallucination = False
         reject_reason = ""
 
         if no_speech_prob > 0.85: # Only reject when Whisper is 85%+ certain there is zero speech
-            is_hallucination = True
+            is_soft_hallucination = True
             reject_reason = "no_speech_probability"
         elif len(text.strip()) == 0:
-            is_hallucination = True
+            is_soft_hallucination = True
             reject_reason = "empty_text"
 
-        if is_hallucination and text:
+        if is_soft_hallucination and text:
             print(
                 f"[STT Worker {os.getpid()}] STT_REJECTED reason={reject_reason} "
                 f"text='{text}' confidence={confidence:.3f} no_speech_prob={no_speech_prob:.3f} avg_logprob={avg_logprob:.3f}"
@@ -274,12 +353,13 @@ class STTServer:
         t_handler_start = time.perf_counter()
         # Wall-clock enqueue time passed to worker for cross-process queue-wait measurement
         enqueue_time = float(request.headers.get("X-Enqueue-Time", str(time.time())))
+        language = request.headers.get("X-Language", "en")
         audio_data = await request.read()
 
         loop = asyncio.get_running_loop()
         try:
             result = await loop.run_in_executor(
-                self.executor, transcribe_audio, audio_data, enqueue_time
+                self.executor, transcribe_audio, audio_data, enqueue_time, language
             )
         except Exception as e:
             print(f"STT Service Error: {e}")

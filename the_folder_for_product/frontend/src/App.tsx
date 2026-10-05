@@ -11,6 +11,7 @@ const CRMPage = lazy(() => import('./pages/CRMPage').then(m => ({ default: m.CRM
 const CampaignsPage = lazy(() => import('./pages/CampaignsPage').then(m => ({ default: m.CampaignsPage })));
 const TasksPage = lazy(() => import('./pages/TasksPage').then(m => ({ default: m.TasksPage })));
 const TeamPage = lazy(() => import('./pages/TeamPage').then(m => ({ default: m.TeamPage })));
+const IncomingCallConfigPage = lazy(() => import('./pages/IncomingCallConfigPage').then(m => ({ default: m.IncomingCallConfigPage })));
 const OrgDashboardPage = lazy(() => import('./pages/OverviewPage').then(m => ({ default: m.OverviewPage })));
 
 const PageLoader: React.FC = () => (
@@ -27,7 +28,7 @@ const PageLoader: React.FC = () => (
 
 const VALID_TABS = [
   'org-dashboard', 'live-monitor', 'crm', 'tasks',
-  'team', 'campaigns'
+  'team', 'campaigns', 'incoming-config'
 ];
 
 const getInitialTab = (): string => {
@@ -176,6 +177,16 @@ export const App: React.FC = () => {
   }, [activeTab]);
 
   // Fast background data fetcher with AbortController timeout & Selective Diffing Algorithm
+  const safeJson = async (res: Response | null | undefined) => {
+    if (!res || !res.ok) return null;
+    try {
+      const text = await res.text();
+      return text ? JSON.parse(text) : null;
+    } catch {
+      return null;
+    }
+  };
+
   const fetchData = async (isInitial = false) => {
     if (isFetchingRef.current) return;
     isFetchingRef.current = true;
@@ -192,10 +203,17 @@ export const App: React.FC = () => {
           fetch('/api/v1/campaigns', fetchOpts).catch(() => null),
         ]);
 
-        if (ovRes?.ok) setSelectiveState('overview', await ovRes.json(), setOverview);
-        if (callRes?.ok) setSelectiveState('calls', await callRes.json(), setCalls);
-        if (ctRes?.ok) setSelectiveState('contacts', await ctRes.json(), setContacts);
-        if (cmpRes?.ok) setSelectiveState('campaigns', await cmpRes.json(), setCampaigns);
+        const [ovData, callData, ctData, cmpData] = await Promise.all([
+          safeJson(ovRes),
+          safeJson(callRes),
+          safeJson(ctRes),
+          safeJson(cmpRes),
+        ]);
+
+        if (ovData) setSelectiveState('overview', ovData, setOverview);
+        if (callData) setSelectiveState('calls', callData, setCalls);
+        if (ctData) setSelectiveState('contacts', ctData, setContacts);
+        if (cmpData) setSelectiveState('campaigns', cmpData, setCampaigns);
       } else {
         const currentTab = activeTabRef.current;
         const promises: Promise<Response | null>[] = [fetch('/api/v1/overview', fetchOpts).catch(() => null)];
@@ -217,11 +235,13 @@ export const App: React.FC = () => {
           const res = responses[i];
           const key = keys[i];
           if (res?.ok) {
-            const data = await res.json();
-            if (key === 'overview') setSelectiveState('overview', data, setOverview);
-            else if (key === 'calls') setSelectiveState('calls', data, setCalls);
-            else if (key === 'contacts') setSelectiveState('contacts', data, setContacts);
-            else if (key === 'campaigns') setSelectiveState('campaigns', data, setCampaigns);
+            const data = await safeJson(res);
+            if (data) {
+              if (key === 'overview') setSelectiveState('overview', data, setOverview);
+              else if (key === 'calls') setSelectiveState('calls', data, setCalls);
+              else if (key === 'contacts') setSelectiveState('contacts', data, setContacts);
+              else if (key === 'campaigns') setSelectiveState('campaigns', data, setCampaigns);
+            }
           }
         }
       }
@@ -239,7 +259,10 @@ export const App: React.FC = () => {
     const timeoutId = setTimeout(() => controller.abort(), 2500);
     try {
       const callRes = await fetch('/api/v1/calls', { signal: controller.signal }).catch(() => null);
-      if (callRes?.ok) setSelectiveState('calls', await callRes.json(), setCalls);
+      if (callRes?.ok) {
+        const data = await safeJson(callRes);
+        if (data) setSelectiveState('calls', data, setCalls);
+      }
     } catch (ex) {}
     finally {
       clearTimeout(timeoutId);
@@ -470,6 +493,7 @@ export const App: React.FC = () => {
               />
             )}
             {activeTab === 'team' && <TeamPage />}
+            {activeTab === 'incoming-config' && <IncomingCallConfigPage agentSession={agentSession} />}
           </Suspense>
         </main>
       </div>

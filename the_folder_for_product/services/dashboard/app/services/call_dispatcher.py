@@ -46,7 +46,7 @@ class CallDispatcher:
                 s_txt = getattr(camp_obj, "script_content", "") if (camp_obj and c_mode == "SCRIPT") else ""
                 s_prompt = getattr(camp_obj, "description", "") if (camp_obj and c_mode == "INTERACTIVE_AI") else ""
                 v_mdl = getattr(camp_obj, "voice_model", None) if camp_obj else None
-                await run_microsip_session(campaign_id=campaign_id, script_content=s_txt, voice_model=v_mdl, call_mode=c_mode, system_prompt=s_prompt)
+                await run_microsip_session(campaign_id=campaign_id, script_content=s_txt, voice_model=v_mdl, call_mode=c_mode, system_prompt=s_prompt, call_id=call_uuid)
                 attempt_rec = CampaignAttempt(
                     campaign_contact_id=campaign_contact_id,
                     call_id=call_uuid,
@@ -136,12 +136,67 @@ class CallDispatcher:
                 "skipped": False
             }
 
-        # Check Exotel Outbound API for external PSTN phone numbers (India 10+ digits)
+        digits_only = "".join(c for c in phone_number if c.isdigit())
+
+        # 1. Primary: Vobiz Outbound API for cellular/PSTN numbers
+        vobiz_auth_id = os.environ.get("VOBIZ_AUTH_ID")
+        vobiz_token = os.environ.get("VOBIZ_AUTH_TOKEN")
+        vobiz_caller_id = os.environ.get("VOBIZ_CALLER_ID", "918064269009")
+        vobiz_public_url = os.environ.get("VOBIZ_PUBLIC_URL", "https://drool-envoy-sandy.ngrok-free.dev")
+
+        if vobiz_auth_id and vobiz_token and len(digits_only) >= 10:
+            import httpx
+            clean_vobiz_to = "91" + digits_only if len(digits_only) == 10 else digits_only
+            vobiz_url = f"https://api.vobiz.ai/api/v1/Account/{vobiz_auth_id}/Call/"
+            answer_url = f"{vobiz_public_url.rstrip('/')}/answer"
+            
+            headers = {
+                "X-Auth-ID": vobiz_auth_id,
+                "X-Auth-Token": vobiz_token,
+                "Content-Type": "application/json"
+            }
+            body = {
+                "from": vobiz_caller_id,
+                "to": clean_vobiz_to,
+                "answer_url": answer_url,
+                "answer_method": "POST"
+            }
+            try:
+                attempt_rec.lifecycle_state = "RINGING"
+                db.commit()
+                async with httpx.AsyncClient(timeout=12.0) as http_client:
+                    resp = await http_client.post(vobiz_url, headers=headers, json=body)
+                if resp.status_code in (200, 201):
+                    attempt_rec.lifecycle_state = "AUDIO_CONNECTED"
+                    call_status = "completed"
+                    duration_s = round(time.perf_counter() - t0, 2) or 15.0
+                    print(f"[CallDispatcher Vobiz] Successfully originated call to {clean_vobiz_to}")
+                else:
+                    attempt_rec.lifecycle_state = "FAILED"
+                    call_status = "failed"
+                    failure_reason = f"Vobiz HTTP {resp.status_code}: {resp.text[:100]}"
+                    duration_s = round(time.perf_counter() - t0, 2)
+            except Exception as ex:
+                attempt_rec.lifecycle_state = "FAILED"
+                call_status = "failed"
+                failure_reason = f"Vobiz error: {str(ex)}"
+                duration_s = round(time.perf_counter() - t0, 2)
+
+            return {
+                "call_id": call_uuid,
+                "status": call_status,
+                "lifecycle_state": attempt_rec.lifecycle_state,
+                "duration_s": duration_s,
+                "idempotency_key": idempotency_key,
+                "failure_reason": failure_reason,
+                "skipped": False
+            }
+
+        # 2. Secondary: Check Exotel Outbound API for external PSTN phone numbers (India 10+ digits)
         exotel_sid = os.environ.get("EXOTEL_ACCOUNT_SID", "snazzyitsolutions1")
         exotel_key = os.environ.get("EXOTEL_API_KEY")
         exotel_token = os.environ.get("EXOTEL_API_TOKEN")
         exotel_caller_id = os.environ.get("EXOTEL_VIRTUAL_NUMBER", "08047283364")
-        digits_only = "".join(c for c in phone_number if c.isdigit())
 
         if exotel_key and exotel_token and len(digits_only) >= 10:
             import httpx

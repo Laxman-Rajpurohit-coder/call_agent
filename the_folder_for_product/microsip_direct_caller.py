@@ -51,6 +51,47 @@ except Exception:
     DEEPGRAM_API_KEY = os.environ.get("DEEPGRAM_API_KEY", "")
     def normalize_phonetics_for_tts(text: str) -> str: return text
 
+class ThinkStripper:
+    """Removes <think>...</think> reasoning tags and reasoning content from model output."""
+    OPEN, CLOSE = "<think>", "</think>"
+    def __init__(self):
+        self._buf = ""
+        self._in_think = False
+    @staticmethod
+    def _partial_suffix(s: str, tag: str) -> int:
+        for n in range(min(len(tag) - 1, len(s)), 0, -1):
+            if s.endswith(tag[:n]):
+                return n
+        return 0
+    def feed(self, chunk: str) -> str:
+        self._buf += chunk
+        out = []
+        while True:
+            if self._in_think:
+                i = self._buf.find(self.CLOSE)
+                if i == -1:
+                    keep = self._partial_suffix(self._buf, self.CLOSE)
+                    self._buf = self._buf[len(self._buf) - keep:] if keep else ""
+                    break
+                self._buf = self._buf[i + len(self.CLOSE):]
+                self._in_think = False
+            else:
+                i = self._buf.find(self.OPEN)
+                if i == -1:
+                    keep = self._partial_suffix(self._buf, self.OPEN)
+                    cut = len(self._buf) - keep
+                    out.append(self._buf[:cut])
+                    self._buf = self._buf[cut:]
+                    break
+                out.append(self._buf[:i])
+                self._buf = self._buf[i + len(self.OPEN):]
+                self._in_think = True
+        return "".join(out)
+    def flush(self) -> str:
+        rest = "" if self._in_think else self._buf
+        self._buf = ""
+        return rest
+
 STT_URL = "http://127.0.0.1:9094/stt"
 TTS_URL = "http://127.0.0.1:9095/tts"
 
@@ -428,38 +469,48 @@ async def send_rtp_audio(rtp_sock, remote_port, raw_audio_bytes, chunk_size=160,
             
     return barge_in_triggered
 
-async def speak_text_to_microsip(rtp_sock, remote_port, text, voice="aura-asteria-en", check_barge_in=True):
+async def speak_text_to_microsip(rtp_sock, remote_port, text, voice="aura-asteria-en", check_barge_in=True) -> bool:
     text = normalize_phonetics_for_tts(text)
-    print(f"\n🤖 AI AGENT SPEAKING INTO MICROSIP [{voice}]: \"{text}\"")
+    print(f"\n - AI AGENT SPEAKING INTO MICROSIP [{voice}]: \"{text}\"")
     
-    # ⚡ 1. PRIMARY ULTRA-FAST DEEPGRAM AURA NEURAL TTS (~200ms LATENCY, 0ms FFMPEG OVERHEAD)
+    # ⚡ 1. CARTESIA (HINDI OR CUSTOM VOICE)
+    if "cartesia" in voice.lower() or voice.lower() in ("hi_pratham", "hi_aditi") or re.search(r'[\u0900-\u097F]', text):
+        try:
+            from path_c_hybrid_agent.tts_cartesia import synthesize_speech
+            print(f"Routing TTS to Cartesia for voice: {voice}")
+            voice_uuid = voice
+            if voice in ("cartesia_hi_sonic", "hi_pratham"):
+                voice_uuid = "14008c51-fbf4-418e-ae23-9316a03dcfa2"
+            
+            pcm_8k = await synthesize_speech(text, voice_id=voice_uuid)
+            if pcm_8k and len(pcm_8k) > 0:
+                await send_rtp_audio(rtp_sock, remote_port, pcm_8k, native_sr=8000, check_barge_in=check_barge_in)
+                return True
+        except Exception as ex:
+            print(f"Cartesia synthesis notice: {ex}")
+    
+    # ⚡ 2. DEEPGRAM AURA NEURAL TTS (~200ms LATENCY)
     try:
         from path_c_hybrid_agent.config import DEEPGRAM_API_KEY
         if DEEPGRAM_API_KEY:
             url = "https://api.deepgram.com/v1/speak?model=aura-asteria-en&encoding=linear16&sample_rate=24000"
             headers = {"Authorization": f"Token {DEEPGRAM_API_KEY}", "Content-Type": "application/json"}
+            import httpx
             async with httpx.AsyncClient() as client:
                 resp = await client.post(url, headers=headers, json={"text": text}, timeout=3.0)
                 if resp.status_code == 200 and len(resp.content) > 44:
                     raw_pcm_24k = resp.content[44:] if resp.content.startswith(b"RIFF") else resp.content
                     await send_rtp_audio(rtp_sock, remote_port, raw_pcm_24k, native_sr=24000, check_barge_in=check_barge_in)
-                    return
+                    return True
     except Exception as ex:
         print(f"Deepgram Aura synthesis notice: {ex}")
 
-    # ⚡ 2. IN-MEMORY NEURAL TTS FALLBACK
-    try:
-        from path_c_hybrid_agent.tts_cartesia import generate_inmemory_neural_pcm
-        pcm_24k = await generate_inmemory_neural_pcm(text, lang='hi')
-        if pcm_24k and len(pcm_24k) > 0:
-            await send_rtp_audio(rtp_sock, remote_port, pcm_24k, native_sr=24000, check_barge_in=check_barge_in)
-            return
-    except Exception as ex:
-        print(f"In-memory synthesis notice: {ex}")
+    print("⚠️ [TTS FAILED]: Cloud TTS (Cartesia & Deepgram) failed to synthesize audio")
+    return False
 
 _active_caller_instance = None
 
-async def run_microsip_session(campaign_id: str = None, script_content: str = None, voice_model: str = None, call_mode: str = "AUTO", system_prompt: str = None):
+async def run_microsip_session(campaign_id: str = None, script_content: str = None, voice_model: str = None, call_mode: str = "AUTO", system_prompt: str = None, first_greeting: str = None, call_id: str = None):
     global _active_caller_instance
     if _active_caller_instance:
         print("⚡ [NEW CALL DISPATCH] Automatically terminating previous active call session...")
@@ -537,7 +588,7 @@ async def run_microsip_session(campaign_id: str = None, script_content: str = No
         return
 
     start_time = datetime.utcnow()
-    call_id_db = str(uuid.uuid4())
+    call_id_db = call_id or str(uuid.uuid4())
     log_gateway_event(f"Call session started with call_id={call_id_db}")
     transcript_turns = []
 
@@ -646,19 +697,19 @@ async def run_microsip_session(campaign_id: str = None, script_content: str = No
     if is_interactive:
         print("\n🤖 [STARTING LIVE INTERACTIVE AI AGENT CALL - SEPARATED FROM SCRIPT RECITATIONS]")
         # 1. AI Agent Greeting (Short, Natural, Human Opening)
-        greeting = "Hello! How can I help you today?"
+        greeting = first_greeting
+        if not greeting:
+            if system_prompt and len(system_prompt) > 10:
+                is_hi = bool(re.search(r'[\u0900-\u097F]', system_prompt)) or "hindi" in system_prompt.lower()
+                greeting = "नमस्ते! मैं आपकी क्या सहायता कर सकता हूँ?" if is_hi else "Hello! How can I help you today?"
+            else:
+                greeting = "Hello! How can I help you today?"
         transcript_turns.append({"role": "assistant", "content": greeting})
         # ⚡ INITIAL GREETING: check_barge_in=False so mic click when clicking Answer NEVER aborts initial greeting!
         await speak_text_to_microsip(rtp_sock, caller.remote_rtp_port, greeting, voice=voice, check_barge_in=False)
 
         # 2. System Persona (Clean Conversational & Word Test Partner)
-        llm_persona = system_prompt.strip() if (system_prompt and system_prompt.strip()) else (
-            "You are Ananya, a warm, friendly, and highly intelligent human-like AI voice assistant at Superfone.\n"
-            "STRICT RULES:\n"
-            "1. Respond directly and accurately to whatever the user says in 1 short spoken sentence.\n"
-            "2. If the user speaks a test word like hello, chalo, yellow, yalo, khalo, bhalo, or dabalo, acknowledge it warmly (e.g. 'Got it, chalo!', 'Heard yellow!').\n"
-            "3. Speak naturally in English or Hinglish/Hindi based on what the user says."
-        )
+        llm_persona = system_prompt.strip() if (system_prompt and system_prompt.strip()) else "You are a helpful AI."
 
         # Interactive Multi-Turn Conversation Loop (Up to 10 turns)
         conversation_history = [
@@ -666,6 +717,7 @@ async def run_microsip_session(campaign_id: str = None, script_content: str = No
             {"role": "assistant", "content": greeting}
         ]
 
+        consecutive_api_failures = 0
         for turn_idx in range(10):
             if hangup_event.is_set() or not caller.is_answered:
                 print(f"🛑 [CALL LOOP EXIT] Call ended or hung up after {turn_idx} turns.")
@@ -802,22 +854,25 @@ async def run_microsip_session(campaign_id: str = None, script_content: str = No
                 except Exception as dg_ex:
                     print(f"   ⚠️ [Deepgram STT Warning]: {dg_ex}")
 
-            # ⚡ 3. IN-PROCESS FASTER-WHISPER LOCAL FALLBACK
+            # Strict 3-API rule: No local CPU faster-whisper fallback
             if not user_text:
-                try:
-                    from services.stt.worker import transcribe_audio, whisper_model, init_worker
-                    if whisper_model is None:
-                        init_worker()
-                    res = transcribe_audio(stt_audio_bytes, time.time())
-                    user_text = res.get("text", "").strip()
-                    stt_ms = round((time.time() - t_stt_start) * 1000, 1)
-                    print(f"   🧠 [IN-PROCESS FAST STT FALLBACK] Transcribed in {stt_ms}ms -> '{user_text}'")
-                except Exception as stt_ex:
-                    print(f"   ⚠️ [In-Process STT Notice: {stt_ex}]")
-
-            if not user_text:
-                print("   👤 USER: [No speech / Silence - Re-listening...]")
-                continue
+                if user_spoken and len(incoming_pcm) > 3200:
+                    consecutive_api_failures += 1
+                    print(f"⚠️ [CLOUD STT PRODUCED NO TEXT] consecutive_failures={consecutive_api_failures}")
+                    is_hi = "hi" in voice.lower() or "cartesia" in voice.lower() or bool(re.search(r'[\u0900-\u097F]', llm_persona))
+                    if consecutive_api_failures == 1:
+                        cushion = "माफ़ कीजिए, मुझे आपकी आवाज़ साफ़ नहीं आई। कृपया दोबारा बोलेंगे?" if is_hi else "I'm sorry, I didn't quite catch that. Could you please repeat?"
+                        print(f"💬 [STT STRIKE 1 CUSHION]: \"{cushion}\"")
+                        await speak_text_to_microsip(rtp_sock, caller.remote_rtp_port, cushion, voice=voice, check_barge_in=False)
+                        continue
+                    else:
+                        closing = "तकनीकी समस्या के कारण संपर्क नहीं हो पा रहा है। हम आपको जल्द संपर्क करेंगे। धन्यवाद।" if is_hi else "We are experiencing technical difficulties. We will contact you shortly. Thank you."
+                        print(f"🛑 [STT STRIKE 2 CUTOFF]: \"{closing}\"")
+                        await speak_text_to_microsip(rtp_sock, caller.remote_rtp_port, closing, voice=voice, check_barge_in=False)
+                        break
+                else:
+                    print("   👤 USER: [No speech / Silence - Re-listening...]")
+                    continue
 
             # Save live microphone audio file for user verification
             rec_dir = os.path.join(WORKSPACE_DIR, "recordings")
@@ -871,7 +926,7 @@ async def run_microsip_session(campaign_id: str = None, script_content: str = No
             except Exception:
                 pass
 
-            # Generate dynamic response via Groq Cloud LLM (Model: qwen/qwen3.8-27b, temp=0.3)
+            # Generate dynamic response via Groq Cloud LLM (Primary: qwen/qwen3.8-27b, Fallback: openai/gpt-oss-20b)
             ai_reply = ""
             try:
                 from path_c_hybrid_agent.config import GROQ_API_KEY as groq_key
@@ -879,45 +934,55 @@ async def run_microsip_session(campaign_id: str = None, script_content: str = No
                 groq_key = os.environ.get("GROQ_API_KEY", "")
 
             if groq_key:
-                try:
-                    async with httpx.AsyncClient() as client:
-                        g_resp = await client.post(
-                            "https://api.groq.com/openai/v1/chat/completions",
-                            headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
-                            json={
-                                "model": "qwen/qwen3.8-27b",
-                                "messages": conversation_history,
-                                "max_tokens": 35,
-                                "temperature": 0.3
-                            },
-                            timeout=3.5
-                        )
-                        if g_resp.status_code == 200:
-                            choices = g_resp.json().get("choices", [])
-                            if choices and "message" in choices[0]:
-                                ai_reply = choices[0]["message"]["content"].strip()
-                                print(f"⚡ [GROQ CLOUD LLM DYNAMIC REPLY]: \"{ai_reply}\"")
-                except Exception as g_ex:
-                    print(f"   ⚠️ [Groq Cloud Warning] {g_ex}")
+                groq_models = ["qwen/qwen3.8-27b", "openai/gpt-oss-20b"]
+                for g_model in groq_models:
+                    try:
+                        async with httpx.AsyncClient() as client:
+                            g_resp = await client.post(
+                                "https://api.groq.com/openai/v1/chat/completions",
+                                headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
+                                json={
+                                    "model": g_model,
+                                    "messages": conversation_history,
+                                    "max_tokens": 40,
+                                    "temperature": 0.3
+                                },
+                                timeout=3.5
+                            )
+                            if g_resp.status_code == 200:
+                                choices = g_resp.json().get("choices", [])
+                                if choices and "message" in choices[0]:
+                                    raw_text = choices[0]["message"].get("content", "") or ""
+                                    # Strip reasoning <think>...</think> tags if model emitted any
+                                    stripper = ThinkStripper()
+                                    cleaned_text = stripper.feed(raw_text) + stripper.flush()
+                                    cleaned_text = cleaned_text.strip()
+                                    if cleaned_text:
+                                        ai_reply = cleaned_text
+                                        print(f"⚡ [GROQ CLOUD LLM ({g_model}) DYNAMIC REPLY]: \"{ai_reply}\"")
+                                        break
+                    except Exception as g_ex:
+                        print(f"   ⚠️ [Groq Cloud Model {g_model} Warning] {g_ex}")
 
             if not ai_reply:
-                # Local LLM fallback
-                try:
-                    async with httpx.AsyncClient() as client:
-                        llm_resp = await client.post("http://127.0.0.1:9093/v1/chat/completions", json={
-                            "messages": conversation_history
-                        }, timeout=3.0)
-                        if llm_resp.status_code == 200:
-                            choices = llm_resp.json().get("choices", [])
-                            if choices and "message" in choices[0]:
-                                ai_reply = choices[0]["message"]["content"].strip()
-                                print(f"🤖 [LOCAL LLM FALLBACK REPLY]: \"{ai_reply}\"")
-                except Exception as ex:
-                    print(f"   ⚠️ [Local LLM Warning] {ex}")
+                consecutive_api_failures += 1
+                is_hi = "hi" in voice.lower() or "cartesia" in voice.lower() or bool(re.search(r'[\u0900-\u097F]', llm_persona))
+                if consecutive_api_failures == 1:
+                    apology = "माफ़ कीजिए, मुझे आपकी आवाज़ साफ़ नहीं आई। कृपया दोबारा बोलेंगे?" if is_hi else "I'm sorry, I didn't quite catch that. Could you please repeat?"
+                    print(f"⚠️ [LLM STRIKE 1 CUSHION]: \"{apology}\"")
+                    transcript_turns.append({"role": "assistant", "content": apology})
+                    conversation_history.append({"role": "assistant", "content": apology})
+                    await speak_text_to_microsip(rtp_sock, caller.remote_rtp_port, apology, voice=voice, check_barge_in=False)
+                    continue
+                else:
+                    closing = "तकनीकी समस्या के कारण संपर्क नहीं हो पा रहा है। हम आपको जल्द संपर्क करेंगे। धन्यवाद।" if is_hi else "We are experiencing technical difficulties. We will contact you shortly. Thank you."
+                    print(f"🛑 [LLM STRIKE 2 CUTOFF]: \"{closing}\"")
+                    transcript_turns.append({"role": "assistant", "content": closing})
+                    await speak_text_to_microsip(rtp_sock, caller.remote_rtp_port, closing, voice=voice, check_barge_in=False)
+                    break
 
-            if not ai_reply:
-                ai_reply = "Ji haan, main aapki baat sun raha hoon. Kripya batayein main aapki kya madad kar sakta hoon?"
-                print(f"💬 [CONVERSATIONAL FALLBACK REPLY]: \"{ai_reply}\"")
+            # Turn succeeded: reset failure counter
+            consecutive_api_failures = 0
 
             if ai_reply:
                 transcript_turns.append({"role": "assistant", "content": ai_reply})
@@ -957,7 +1022,14 @@ async def run_microsip_session(campaign_id: str = None, script_content: str = No
             raw_lines = [l.strip() for l in raw_script.split('\n') if l.strip()]
             for l in raw_lines:
                 transcript_turns.append({"role": "assistant", "content": l})
-            await speak_text_to_microsip(rtp_sock, caller.remote_rtp_port, raw_script, voice=voice)
+            await speak_text_to_microsip(rtp_sock, caller.remote_rtp_port, raw_script, voice=voice, check_barge_in=False)
+            
+            # Post-recitation listening: keep line open for caller (up to 15s) or until user clicks Hangup
+            print("   👂 [SCRIPT FINISHED] Script recited completely. Keeping call active (up to 15s)...")
+            try:
+                await asyncio.wait_for(hangup_event.wait(), timeout=15.0)
+            except asyncio.TimeoutError:
+                print("   ⏱️ [SCRIPT TIMEOUT] Post-script grace period ended.")
         else:
             transcript_turns = [{"role": "assistant", "content": "[No speech script provided]"}]
 

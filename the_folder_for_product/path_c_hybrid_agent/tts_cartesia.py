@@ -20,8 +20,15 @@ from typing import Optional
 sys.stdout.reconfigure(encoding='utf-8')
 
 from path_c_hybrid_agent.config import CARTESIA_API_KEY
+import threading
 
-CARTESIA_SEMAPHORE = asyncio.Semaphore(2)
+_CARTESIA_SEMAPHORE = None
+
+def get_cartesia_semaphore():
+    global _CARTESIA_SEMAPHORE
+    if _CARTESIA_SEMAPHORE is None:
+        _CARTESIA_SEMAPHORE = threading.Semaphore(2)
+    return _CARTESIA_SEMAPHORE
 
 # Pre-allocated memory pool buffers for zero-GC allocation DSP math
 MAX_POOL_SAMPLES = 24000 * 30 # Up to 30 seconds of 24kHz HD audio
@@ -185,12 +192,12 @@ def generate_local_gtts_pcm(text: str, lang: str = 'hi', sample_rate: int = 8000
         return asyncio.run(generate_inmemory_neural_pcm(text, lang, sample_rate))
 
 
-async def synthesize_speech(text: str, voice_id: str = "56e35e2d-6eb6-4226-ab8b-9776515a7094") -> bytes:
+async def synthesize_speech(text: str, voice_id: str = "ffa0d297-8cf9-4ec9-8e4e-99a59e939b02") -> bytes:
     """Synthesizes 8kHz 16-bit PCM speech using fast in-memory neural engine."""
     if not text or not text.strip():
         return b""
 
-    target_voice = voice_id if len(voice_id) == 36 else "56e35e2d-6eb6-4226-ab8b-9776515a7094"
+    target_voice = voice_id if len(voice_id) == 36 else "ffa0d297-8cf9-4ec9-8e4e-99a59e939b02"
 
     if CARTESIA_API_KEY:
         url = "https://api.cartesia.ai/tts/bytes"
@@ -219,14 +226,16 @@ async def synthesize_speech(text: str, voice_id: str = "56e35e2d-6eb6-4226-ab8b-
         }
 
         for attempt in range(1):
-            async with CARTESIA_SEMAPHORE:
+            with get_cartesia_semaphore():
                 try:
                     async with httpx.AsyncClient(timeout=4.0) as client:
                         res = await client.post(url, headers=headers, json=payload)
-                        if res.status_code == 200:
-                            pcm_data = np.frombuffer(res.content, dtype=np.int16)
-                            return await asyncio.to_thread(apply_studio_mastering_gate, pcm_data, 8000, 8000)
-                except Exception:
+                        if res.status_code == 200 and len(res.content) > 0:
+                            return res.content
+                        else:
+                            print(f"[tts_cartesia] Cartesia API error ({res.status_code}): {res.text}", flush=True)
+                except Exception as e:
+                    print(f'[tts_cartesia] Cartesia API failed: {e}', flush=True)
                     break
 
     # High-speed in-memory neural synthesis fallback

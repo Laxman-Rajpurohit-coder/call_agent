@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Integer, Float, Boolean, DateTime, Text, JSON, ForeignKey, Index
+from sqlalchemy import Column, String, Integer, Float, Boolean, DateTime, Text, JSON, ForeignKey, Index, UniqueConstraint
 from sqlalchemy.orm import relationship
 from services.dashboard.app.database import Base
 
@@ -30,6 +30,9 @@ class Organization(Base):
     business_hours = relationship("BusinessHours", back_populates="organization", cascade="all, delete-orphan")
     team_members = relationship("TeamMember", back_populates="organization", cascade="all, delete-orphan")
     contacts = relationship("Contact", back_populates="organization", cascade="all, delete-orphan")
+    contact_phones = relationship("ContactPhone", back_populates="organization", cascade="all, delete-orphan")
+    contact_emails = relationship("ContactEmail", back_populates="organization", cascade="all, delete-orphan")
+    contact_notes = relationship("ContactNote", back_populates="organization", cascade="all, delete-orphan")
     campaigns = relationship("Campaign", back_populates="organization", cascade="all, delete-orphan")
     call_sessions = relationship("CallSession", back_populates="organization", cascade="all, delete-orphan")
     audit_logs = relationship("AuditLog", back_populates="organization", cascade="all, delete-orphan")
@@ -137,6 +140,12 @@ class Contact(Base):
     lead_owner_id = Column(String, ForeignKey("team_members.id", ondelete="SET NULL"), nullable=True)
     last_called_at = Column(DateTime, nullable=True)
     custom_fields = Column(JSON, default=dict)
+    company = Column(String, nullable=True)
+    is_archived = Column(Boolean, default=False)
+    is_blocked = Column(Boolean, default=False)
+    tags = Column(JSON, default=list)
+    ai_profile = Column(JSON, default=dict)
+    merged_into_id = Column(String, ForeignKey("contacts.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -146,6 +155,57 @@ class Contact(Base):
     call_interactions = relationship("CallInteraction", back_populates="contact")
     tasks = relationship("LeadTask", back_populates="contact", cascade="all, delete-orphan")
     reminders = relationship("LeadReminder", back_populates="contact", cascade="all, delete-orphan")
+    phones = relationship("ContactPhone", back_populates="contact", cascade="all, delete-orphan")
+    emails = relationship("ContactEmail", back_populates="contact", cascade="all, delete-orphan")
+    notes = relationship("ContactNote", back_populates="contact", cascade="all, delete-orphan", order_by="desc(ContactNote.created_at)")
+
+class ContactPhone(Base):
+    __tablename__ = "contact_phones"
+    __table_args__ = (UniqueConstraint("organization_id", "phone_e164", name="uq_org_phone"),)
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    contact_id = Column(String, ForeignKey("contacts.id", ondelete="CASCADE"), nullable=False, index=True)
+    organization_id = Column(String, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    phone_e164 = Column(String, nullable=False, index=True)
+    phone_type = Column(String, default="mobile")  # mobile, work, home, whatsapp
+    is_primary = Column(Boolean, default=True)
+    verified = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    organization = relationship("Organization", back_populates="contact_phones")
+    contact = relationship("Contact", back_populates="phones")
+
+class ContactEmail(Base):
+    __tablename__ = "contact_emails"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    contact_id = Column(String, ForeignKey("contacts.id", ondelete="CASCADE"), nullable=False, index=True)
+    organization_id = Column(String, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    email = Column(String, nullable=False, index=True)
+    email_type = Column(String, default="work")  # work, personal
+    is_primary = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    organization = relationship("Organization", back_populates="contact_emails")
+    contact = relationship("Contact", back_populates="emails")
+
+class ContactNote(Base):
+    __tablename__ = "contact_notes"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    contact_id = Column(String, ForeignKey("contacts.id", ondelete="CASCADE"), nullable=False, index=True)
+    organization_id = Column(String, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    agent_id = Column(String, ForeignKey("team_members.id", ondelete="SET NULL"), nullable=True)
+    agent_name = Column(String, nullable=True)
+    note = Column(Text, nullable=False)
+    disposition = Column(String, nullable=True)  # Interested, Callback, Converted, Do Not Call, Wrong Number, etc.
+    sentiment = Column(String, nullable=True)     # positive, neutral, negative
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    organization = relationship("Organization", back_populates="contact_notes")
+    contact = relationship("Contact", back_populates="notes")
+    agent = relationship("TeamMember")
 
 class TeamMember(Base):
     __tablename__ = "team_members"
@@ -229,6 +289,10 @@ class WhatsAppMessage(Base):
 
 class CallSession(Base):
     __tablename__ = "call_sessions"
+
+    incoming_config_id = Column(String, ForeignKey("incoming_call_configs.id", ondelete="SET NULL"), nullable=True, index=True)
+    config_version = Column(Integer, nullable=True)
+    config_snapshot = Column(JSON, nullable=True)
 
     id = Column(String, primary_key=True, default=generate_uuid)
     organization_id = Column(String, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -328,3 +392,83 @@ class CallInteraction(Base):
         self.call_id = val
 
 
+
+class IncomingCallConfig(Base):
+    __tablename__ = "incoming_call_configs"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    organization_id = Column(String, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    phone_number_id = Column(String, ForeignKey("phone_numbers.id", ondelete="SET NULL"), nullable=True, index=True)
+    
+    name = Column(String, nullable=False)
+    is_active = Column(Boolean, default=True, index=True)
+    priority = Column(Integer, default=0)
+    config_version = Column(Integer, default=1)
+
+    ai_model = Column(String, default="gpt-4o")
+    voice_provider = Column(String, default="cartesia")
+    voice_id = Column(String, default="cartesia_hi_sonic")
+    speaking_style = Column(String, default="Friendly")
+    temperature = Column(Float, default=0.3)
+
+    ai_name = Column(String, default="Ananya")
+    role_description = Column(Text, nullable=True)
+    primary_objective = Column(Text, nullable=True)
+    behavior_rules = Column(JSON, default=list)
+    system_instructions = Column(Text, nullable=True)
+
+    primary_language = Column(String, default="en")
+    supported_languages = Column(JSON, default=list)
+    auto_detect_language = Column(Boolean, default=True)
+    allow_language_switching = Column(Boolean, default=True)
+    language_priority = Column(JSON, default=list)
+
+    auto_answer = Column(Boolean, default=True)
+    ring_timeout_s = Column(Integer, default=15)
+    max_call_duration_s = Column(Integer, nullable=True)
+    max_ai_duration_s = Column(Integer, nullable=True)
+
+    business_name = Column(String, nullable=True)
+    business_description = Column(Text, nullable=True)
+    services_offered = Column(JSON, default=list)
+    faq_knowledge_base = Column(Text, nullable=True)
+
+    auto_create_contact = Column(Boolean, default=True)
+    generate_ai_summary = Column(Boolean, default=True)
+    extract_intent = Column(Boolean, default=True)
+    auto_tags = Column(JSON, default=list)
+
+    recording_enabled = Column(Boolean, default=True)
+    transcription_enabled = Column(Boolean, default=True)
+    transcript_language = Column(String, default="en")
+
+    greeting_message = Column(Text, nullable=True)
+    auto_generate_greeting = Column(Boolean, default=False)
+
+    outside_hours_action = Column(String, default="continue_ai")
+
+    transfer_enabled = Column(Boolean, default=True)
+    transfer_triggers = Column(JSON, default=list)
+    transfer_confidence_threshold = Column(Float, default=0.65)
+    transfer_timeout_s = Column(Integer, default=15)
+    transfer_team_id = Column(String, nullable=True)
+    ring_strategy = Column(String, default="first_available")
+    no_answer_action = Column(String, default="voicemail")
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    organization = relationship("Organization")
+    phone_number = relationship("PhoneNumber")
+
+
+class IncomingCallConfigAudit(Base):
+    __tablename__ = "incoming_call_config_audits"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    config_id = Column(String, ForeignKey("incoming_call_configs.id", ondelete="CASCADE"), nullable=False, index=True)
+    organization_id = Column(String, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    changed_by_user_id = Column(String, ForeignKey("team_members.id", ondelete="SET NULL"), nullable=True)
+    changed_at = Column(DateTime, default=datetime.utcnow)
+    changes = Column(JSON, nullable=False)
+    config_version = Column(Integer, nullable=False)

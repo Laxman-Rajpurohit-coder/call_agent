@@ -225,6 +225,17 @@ def run_migrations():
                 ("allowed_lead_labels", "JSON"),
             ])
 
+        if "contacts" in all_tables:
+            _add_missing("contacts", [
+                ("company", "TEXT"),
+                ("is_archived", "INTEGER DEFAULT 0"),
+                ("is_blocked", "INTEGER DEFAULT 0"),
+                ("tags", "JSON"),
+                ("ai_profile", "JSON"),
+                ("merged_into_id", "TEXT"),
+            ])
+
+    from services.dashboard.app.models.crm import IncomingCallConfig, IncomingCallConfigAudit
     # Create new tables if not present
     Base.metadata.create_all(bind=engine)
 
@@ -245,7 +256,7 @@ def run_tenant_backfill_migration():
     from services.dashboard.app.models.crm import (
         Organization, PortalConfig, AgentConfig, Service, PhoneNumber,
         BusinessHours, Contact, TeamMember, LeadTask, LeadReminder,
-        CallSession, CallInteraction
+        CallSession, CallInteraction, IncomingCallConfig, IncomingCallConfigAudit
     )
     from services.dashboard.app.models.campaign import Campaign, CampaignAgent
     import uuid

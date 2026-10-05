@@ -17,6 +17,7 @@ from services.dashboard.app.api.auth import router as auth_router
 from services.dashboard.app.api.tools import router as tools_router
 from services.dashboard.app.api.portals import router as portals_router
 
+from services.dashboard.app.api.incoming_configs import router as incoming_configs_router
 api_router = APIRouter()
 api_router.include_router(health_router)
 api_router.include_router(overview_router)
@@ -37,3 +38,5 @@ api_router.include_router(team_router, prefix="/team", tags=["Team"])
 api_router.include_router(tools_router)
 
 
+
+api_router.include_router(incoming_configs_router)

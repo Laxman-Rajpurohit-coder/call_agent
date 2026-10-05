@@ -569,6 +569,8 @@ export const CampaignsPage: React.FC<CampaignsPageProps> = ({
                       <option value="cartesia_hi_sonic">⚡ Cartesia Cloud — Hindi Sonic (Ultra-Realistic & Low Latency)</option>
                       <option value="cartesia_hi_female">⚡ Cartesia Cloud — Hindi Female (hi-IN)</option>
                       <option value="cartesia_en_sonic">⚡ Cartesia Cloud — English Sonic (Ultra-Realistic)</option>
+                      <option value="edge_hi-IN-MadhurNeural">⚡ EdgeTTS Cloud — Hindi Madhur (Male)</option>
+                      <option value="edge_mr-IN-AarohiNeural">⚡ EdgeTTS Cloud — Marathi/Marwadi (Female)</option>
                       <option value="deepgram_aura_asteria">⚡ Deepgram Cloud — Aura Asteria (Female)</option>
                       <option value="deepgram_aura_orion">⚡ Deepgram Cloud — Aura Orion (Male)</option>
                       <option value="elevenlabs_multilingual">⚡ ElevenLabs Cloud — Multilingual Studio Voice</option>
@@ -810,6 +812,8 @@ export const CampaignsPage: React.FC<CampaignsPageProps> = ({
               >
                 <option value="deepgram_aura_asteria">Deepgram Aura Asteria (Cloud Neural)</option>
                 <option value="cartesia_hi_sonic">Cartesia Hindi Sonic (Cloud Neural)</option>
+                <option value="edge_hi-IN-MadhurNeural">EdgeTTS Hindi Madhur (Male)</option>
+                <option value="edge_mr-IN-AarohiNeural">EdgeTTS Marathi/Marwadi (Female)</option>
                 <option value="hi_female">Kokoro Female Sarah (Local ONNX)</option>
                 <option value="hi_pratham">Piper Hindi Pratham (Local)</option>
               </select>
