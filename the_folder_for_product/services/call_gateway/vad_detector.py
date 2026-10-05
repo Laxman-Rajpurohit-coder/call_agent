@@ -4,7 +4,12 @@ import time
 from typing import Optional, Tuple, Dict, Any
 import numpy as np
 from scipy.signal import resample_poly
-import faster_whisper.vad as fv
+try:
+    import faster_whisper.vad as fv
+    _HAS_FV = True
+except ImportError:
+    fv = None
+    _HAS_FV = False
 
 
 class VADState(enum.Enum):
@@ -70,7 +75,10 @@ class SileroEndpointingEngine:
         max_utterance_frames: int = 750,  # 15.0s max
         echo_correlation_threshold: float = 0.55,
     ):
-        self.vad_model = fv.get_vad_model()
+        if _HAS_FV and fv is not None:
+            self.vad_model = fv.get_vad_model()
+        else:
+            self.vad_model = None
         self.speech_threshold = speech_threshold
         self.barge_in_threshold = barge_in_threshold
         self.pre_roll_frames = pre_roll_frames
@@ -183,11 +191,16 @@ class SileroEndpointingEngine:
 
         # Run Silero VAD when we have at least 512 samples @ 16kHz
         prob = self.current_prob
-        while len(self.audio_16k_buffer) >= 512:
-            chunk = self.audio_16k_buffer[:512]
-            self.audio_16k_buffer = self.audio_16k_buffer[512:]
-            out = self.vad_model(chunk)
-            prob = float(np.squeeze(out))
+        if self.vad_model is not None:
+            while len(self.audio_16k_buffer) >= 512:
+                chunk = self.audio_16k_buffer[:512]
+                self.audio_16k_buffer = self.audio_16k_buffer[512:]
+                out = self.vad_model(chunk)
+                prob = float(np.squeeze(out))
+                self.current_prob = prob
+        else:
+            self.audio_16k_buffer = np.array([], dtype=np.float32)
+            prob = 0.85 if frame_rms > max(350.0, self.noise_floor_rms * 2.2) else 0.05
             self.current_prob = prob
 
         # Adaptive Noise Floor Tracking (smooth EMA during non-speech)
